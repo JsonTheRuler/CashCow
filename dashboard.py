@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 from streamlit_option_menu import option_menu
 
@@ -20,13 +21,18 @@ STATE_PATH = ROOT / "state.json"
 LOGS_DIR = ROOT / "logs"
 API_BASE = (os.getenv("CASH_COW_API_URL") or os.getenv("CASH_COW_API") or "http://127.0.0.1:8090").rstrip("/")
 MPT_BASE = os.getenv("MONEYPRINTERTURBO_API_URL", "http://127.0.0.1:8080").rstrip("/")
+HUB_URL = (os.getenv("CASH_COW_HUB_URL") or "http://127.0.0.1:3000").rstrip("/")
+HUB_IFRAME_HEIGHT = int(os.getenv("CASH_COW_HUB_IFRAME_HEIGHT", "800"))
 
 _NAV_OPTIONS: tuple[str, ...] = (
+    "Hub",
+    "Overview",
     "Polymarket",
     "TradingAgents signals",
     "DeFi yields",
     "Video factory",
     "Orchestrator",
+    "API & docs",
 )
 
 
@@ -101,6 +107,53 @@ def inject_css() -> None:
     background: linear-gradient(90deg, #fbbf24, #f59e0b);
     vertical-align: middle;
   }
+  .cc-page-shell {
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 1rem 1.15rem 1.25rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(165deg, rgba(22,27,34,0.55) 0%, rgba(13,17,23,0.35) 100%);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .cc-page-shell h2, .cc-page-shell h3 { color: #fbbf24 !important; margin-top: 0; }
+  .cc-kv { color: #8b949e; font-size: 0.88rem; line-height: 1.55; }
+  .cc-kv code { color: #f59e0b; font-size: 0.85rem; }
+  .main h1 { color: #fbbf24 !important; font-weight: 800 !important; }
+  .main h2, .main h3 { color: #f59e0b !important; }
+  div[data-testid="stMetricValue"] { color: #3fb950 !important; }
+  div[data-testid="stMetricLabel"] { color: #8b949e !important; }
+  div[data-testid="stExpander"] details {
+    border: 1px solid #30363d !important;
+    border-radius: 12px !important;
+    background: #161b22 !important;
+  }
+  div[data-testid="stExpander"] summary { color: #fbbf24 !important; font-weight: 600 !important; }
+  div[data-testid="stAlert"] {
+    border-radius: 12px !important;
+    border: 1px solid #30363d !important;
+    background: #161b22 !important;
+  }
+  [data-testid="stDataFrame"] { border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
+  .stButton > button[kind="primary"], button[data-testid="baseButton-primary"] {
+    background: linear-gradient(90deg, #238636, #3fb950) !important;
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700 !important;
+  }
+  .stButton > button[kind="secondary"], button[data-testid="baseButton-secondary"] {
+    border-color: #f59e0b !important;
+    color: #fbbf24 !important;
+  }
+  div[data-baseweb="select"] > div {
+    border-color: #30363d !important;
+    background-color: #161b22 !important;
+  }
+  .stTextArea textarea, .stTextInput input {
+    border-color: #30363d !important;
+    background-color: #0d1117 !important;
+    color: #e6edf3 !important;
+  }
+  .stCodeBlock { border: 1px solid #30363d !important; border-radius: 10px !important; }
 </style>
 """,
         unsafe_allow_html=True,
@@ -197,6 +250,80 @@ def render_sidebar_health() -> None:
     else:
         st.markdown('<span class="health-dot health-down"></span>API offline', unsafe_allow_html=True)
         st.caption("Start: `uvicorn api:app --host 0.0.0.0 --port 8090`")
+
+
+def _pipeline_metrics_strip() -> None:
+    state = load_state()
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Pipeline", str(state.get("pipeline_status", "unknown")).upper())
+    c2.metric("Tickers", len(state.get("detected_tickers", [])))
+    c3.metric("Signals", len(state.get("signals", [])))
+
+
+def render_hub_tab() -> None:
+    """Embed the Vite React hub (port 3000) via iframe inside components.html."""
+    st.subheader("Cash Cow Hub")
+    st.caption(
+        f"React shell at `{HUB_URL}` — run `cd hub && npm install && npm run dev`. "
+        "Override with env `CASH_COW_HUB_URL`."
+    )
+    safe_url = html.escape(HUB_URL, quote=True)
+    h = HUB_IFRAME_HEIGHT
+    iframe_html = (
+        f'<iframe src="{safe_url}" width="100%" height="{h}" '
+        'style="border:none;border-radius:14px;background:#0a0e14;box-shadow:0 12px 48px rgba(0,0,0,0.45);" '
+        'title="Cash Cow Hub" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>'
+    )
+    components.html(iframe_html, height=h + 28, scrolling=True)
+
+
+def render_overview_tab() -> None:
+    state = load_state()
+    st.subheader("Mission control")
+    st.markdown(
+        '<div class="cc-kv">Pipeline status, tickers, and signal counts at a glance — same branding as the '
+        '<strong style="color:#3fb950;">Hub</strong> and <strong style="color:#fbbf24;">Alpha</strong> surfaces.</div>',
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Pipeline", str(state.get("pipeline_status", "unknown")).upper())
+    c2.metric("Tickers", len(state.get("detected_tickers", [])))
+    c3.metric("Signals", len(state.get("signals", [])))
+    st.divider()
+    st.markdown("#### Quick links")
+    lc1, lc2, lc3 = st.columns(3)
+    with lc1:
+        st.link_button("Open API Swagger", f"{API_BASE}/docs", use_container_width=True)
+    with lc2:
+        st.link_button("Hub (dev server)", HUB_URL, use_container_width=True)
+    with lc3:
+        st.link_button("Polymarket", "https://polymarket.com", use_container_width=True)
+    st.markdown(
+        '<div class="cc-page-shell" style="margin-top:1rem;"><p class="cc-kv"><strong>Ports</strong> · API '
+        "<code>8090</code> · Dashboard <code>8502</code> · Hub <code>3000</code> · MPT <code>8080</code></p></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_api_docs_tab() -> None:
+    st.subheader("API and docs")
+    st.markdown(
+        '<div class="cc-kv">Unified FastAPI backend — gold accents in the UI map to primary actions; green for '
+        "live health and positive deltas.</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="cc-page-shell">'
+        "<ul style='margin:0;padding-left:1.2rem;color:#8b949e;line-height:1.7;font-size:0.9rem;'>"
+        "<li><code style='color:#f59e0b;'>GET</code> <strong>/api/v1/health</strong> — dependency status</li>"
+        "<li><code style='color:#f59e0b;'>GET</code> <strong>/api/v1/dashboard</strong> — bundled dashboard payload</li>"
+        "<li><code style='color:#f59e0b;'>GET</code> <strong>/api/v1/alpha-signals</strong> — Cash Cow Alpha rows</li>"
+        "<li><code style='color:#f59e0b;'>POST</code> <strong>/api/v1/track-copy-click</strong> — engagement</li>"
+        "<li><code style='color:#f59e0b;'>POST</code> <strong>/api/v1/preview-script</strong> — script bundle for video</li>"
+        "</ul></div>",
+        unsafe_allow_html=True,
+    )
+    st.link_button("Open interactive docs", f"{API_BASE}/docs", type="primary", use_container_width=False)
 
 
 def render_sidebar_alpha() -> None:
@@ -527,21 +654,31 @@ def main() -> None:
         selected = option_menu(
             menu_title="Navigate",
             options=list(_NAV_OPTIONS),
-            icons=["graph-up", "cpu", "coin", "play-btn", "diagram-3"],
+            icons=[
+                "house",
+                "speedometer2",
+                "graph-up",
+                "cpu",
+                "coin",
+                "play-btn",
+                "diagram-3",
+                "plug",
+            ],
             menu_icon="compass",
             default_index=0,
             styles={
                 "container": {"padding": "0.25rem 0", "background-color": "transparent"},
-                "icon": {"color": "#58a6ff", "font-size": "1.1rem"},
+                "icon": {"color": "#3fb950", "font-size": "1.05rem"},
                 "nav-link": {
-                    "font-size": "0.95rem",
+                    "font-size": "0.88rem",
                     "text-align": "left",
                     "margin": "2px 0",
                     "--hover-color": "#1c2430",
                 },
                 "nav-link-selected": {
-                    "background-color": "#312e81",
+                    "background": "linear-gradient(90deg, #92400e55, #312e81)",
                     "font-weight": 600,
+                    "border-left": "3px solid #f59e0b",
                 },
             },
         )
@@ -555,25 +692,30 @@ def main() -> None:
 
     st.title("Cash Cow")
     st.caption(
-        f"**{selected}** — autonomous market intelligence · Polymarket · DeFi · Signals · Video · Orchestrator"
+        f"**{selected}** — gold & pasture green ops console · Hub · Polymarket · DeFi · Signals · Video"
     )
 
-    state = load_state()
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Pipeline", str(state.get("pipeline_status", "unknown")).upper())
-    c2.metric("Tickers", len(state.get("detected_tickers", [])))
-    c3.metric("Signals", len(state.get("signals", [])))
-
-    if selected == "Polymarket":
+    if selected == "Hub":
+        render_hub_tab()
+    elif selected == "Overview":
+        render_overview_tab()
+    elif selected == "Polymarket":
+        _pipeline_metrics_strip()
         render_polymarket_tab()
     elif selected == "TradingAgents signals":
+        _pipeline_metrics_strip()
         render_signals_tab()
     elif selected == "DeFi yields":
+        _pipeline_metrics_strip()
         render_defi_tab()
     elif selected == "Video factory":
+        _pipeline_metrics_strip()
         render_video_factory_tab()
     elif selected == "Orchestrator":
+        _pipeline_metrics_strip()
         render_orchestrator_tab()
+    elif selected == "API & docs":
+        render_api_docs_tab()
 
 
 if __name__ == "__main__":

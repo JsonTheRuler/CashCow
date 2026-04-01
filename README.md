@@ -18,6 +18,8 @@ This repo ships **[TauricResearch/TradingAgents](https://github.com/TauricResear
 pip install ".[dashboard]"
 # Terminal A — unified API (caching + all /api/v1/* routes)
 python api.py
+# Optional — React hub (embedded in Streamlit “Hub” tab via iframe on :3000)
+cd hub && npm install && npm run dev
 # Terminal B — Streamlit (reads http://127.0.0.1:8090/api/v1/dashboard)
 streamlit run dashboard.py --server.port 8502
 # Optional CLI
@@ -27,27 +29,27 @@ python cli.py scan
 
 Open **http://127.0.0.1:8090/docs** to exercise endpoints. Optional: `python cli.py demo --serve` spawns API + dashboard as background processes (Windows).
 
+**Main landing (React hub, :3000)** — **`hub/src/CashCowHub.jsx`** (Vite app under `hub/`) is the **supported** navigation shell for the whole solution: it links Streamlit (**8502**), Cash Cow API (**8090**), MoneyPrinterTurbo (**8080**), Polymarket, and DeFi Llama. Streamlit’s **Hub** tab embeds this build via iframe (`CASH_COW_HUB_URL`). Override host at build with `VITE_CASH_COW_HOST` (see `hub/.env.example`). A separate **`CashCowHub.jsx`** at repo root targets a different stack (e.g. lucide-react); use **`hub/`** for `npm run dev` / production builds unless you maintain that file explicitly.
+
 **Architecture (ASCII)**
 
 ```
-  Polymarket Gamma                    DeFi Llama
-         |                                  |
-         v                                  v
-    +-----------+                    +------------+
-    |  scorer   |                    | defi_pipe  |
-    +-----------+                    +------------+
-         \                                /
-          \                              /
-           v        +-----------+       v
-            ------->|  api.py   |<-------
-   state.json ----->|  :8090    |     MoneyPrinterTurbo :8080
-                    +-----------+
-                           |
-                           v
-                    +-------------+
-                    | dashboard   |
-                    | Streamlit   |
-                    +-------------+
+                         +------------------+
+                         |  React Hub :3000 |  <-- main landing (this file)
+                         +--------+---------+
+                                  | iframe in "Hub" tab
+  Polymarket Gamma                v
+         |                 +-------------+      DeFi Llama
+         v                 |  Streamlit  |            |
+    +-----------+          |  dashboard  |            v
+    |  scorer   |          |   :8502     |     +------------+
+    +-----------+          +------+------+     | defi_pipe  |
+         \                        |            +------------+
+          \                       | health / dashboard JSON
+           v                      v
+            +-----------------------------+     MoneyPrinterTurbo :8080
+   state.json->|  api.py (FastAPI) :8090  |<------- bridge / video
+                +-------------------------+
 ```
 
 ---

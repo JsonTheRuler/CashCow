@@ -1,0 +1,379 @@
+/* Cash Cow Hub — gold + pasture green on charcoal (matches Streamlit dashboard) */
+:root {
+  --cc-bg-deep: #0a0e14;
+  --cc-bg-mid: #0d1117;
+  --cc-bg-card: #161b22;
+  --cc-border: #30363d;
+  --cc-text: #e6edf3;
+  --cc-muted: #8b949e;
+  --cc-gold: #f59e0b;
+  --cc-gold-soft: #fbbf24;
+  --cc-green: #3fb950;
+  --cc-green-deep: #238636;
+  --cc-violet: #a371f7;
+  --cc-blue: #58a6ff;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: var(--cc-bg-deep);
+  color: var(--cc-text);
+  font-family: var(--font-body);
+}
+
+.hub-root {
+  min-height: 100vh;
+  background: linear-gradient(165deg, var(--cc-bg-deep) 0%, var(--cc-bg-mid) 45%, #111827 100%);
+}
+
+.hub-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--cc-border);
+  background: linear-gradient(180deg, rgba(22, 27, 34, 0.95), rgba(13, 17, 23, 0.9));
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+
+.hub-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.hub-cow {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--cc-green-deep), var(--cc-green));
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+  box-shadow: 0 0 20px rgba(63, 185, 80, 0.35);
+}
+
+.hub-brand-text h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, var(--cc-gold-soft), var(--cc-gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hub-brand-text span {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--cc-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
+}
+
+.hub-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  max-width: 72%;
+}
+
+.hub-nav button {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--cc-border);
+  background: rgba(22, 27, 34, 0.8);
+  color: var(--cc-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.hub-nav button:hover {
+  color: var(--cc-text);
+  border-color: #484f58;
+}
+
+.hub-nav button.active {
+  color: #0a0e14;
+  background: linear-gradient(90deg, var(--cc-gold-soft), var(--cc-gold));
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.25);
+}
+
+.hub-main {
+  padding: 1.75rem 1.5rem 3rem;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.hub-hero {
+  text-align: center;
+  padding: 2.5rem 1rem 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.hub-hero h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 4vw, 2.35rem);
+  font-weight: 800;
+  margin: 0 0 0.75rem;
+  line-height: 1.2;
+}
+
+.hub-hero h2 em {
+  font-style: normal;
+  color: var(--cc-green);
+  text-shadow: 0 0 24px rgba(63, 185, 80, 0.35);
+}
+
+.hub-hero p {
+  max-width: 560px;
+  margin: 0 auto;
+  color: var(--cc-muted);
+  font-size: 1.02rem;
+  line-height: 1.55;
+}
+
+.hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.hub-btn {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hub-btn-primary {
+  background: linear-gradient(90deg, var(--cc-green-deep), var(--cc-green));
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(35, 134, 54, 0.35);
+}
+
+.hub-btn-secondary {
+  background: transparent;
+  color: var(--cc-gold-soft);
+  border: 1px solid var(--cc-gold);
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.hub-card {
+  background: linear-gradient(145deg, var(--cc-bg-card), #1c2430);
+  border: 1px solid var(--cc-border);
+  border-radius: 14px;
+  padding: 1.15rem 1.2rem;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+}
+
+.hub-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--cc-gold-soft);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hub-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--cc-muted);
+  line-height: 1.5;
+}
+
+.hub-tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--cc-gold-soft), var(--cc-gold));
+  color: #0a0e14;
+}
+
+.hub-tag-green {
+  background: linear-gradient(90deg, var(--cc-green-deep), var(--cc-green));
+  color: #fff;
+}
+
+.hub-section-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+  color: var(--cc-text);
+  border-left: 4px solid var(--cc-violet);
+  padding-left: 0.75rem;
+}
+
+.hub-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.hub-list li {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--cc-border);
+  font-size: 0.88rem;
+  color: var(--cc-muted);
+}
+
+.hub-list li:last-child {
+  border-bottom: none;
+}
+
+.hub-list strong {
+  color: var(--cc-blue);
+  font-weight: 600;
+}
+
+.hub-disclaimer {
+  margin-top: 2rem;
+  padding: 1rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid #4c1d95;
+  background: linear-gradient(90deg, rgba(31, 41, 55, 0.9), rgba(49, 46, 129, 0.35));
+  font-size: 0.78rem;
+  color: var(--cc-muted);
+  line-height: 1.45;
+}
+
+/* Connected stack — ties every runnable app to this landing page */
+.hub-connected {
+  margin: 2rem 0 1.5rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 16px;
+  border: 1px solid var(--cc-border);
+  background: linear-gradient(135deg, rgba(49, 46, 129, 0.25), rgba(22, 27, 34, 0.9));
+}
+
+.hub-connected h3 {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--cc-gold-soft);
+}
+
+.hub-connected > p {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--cc-muted);
+  line-height: 1.45;
+}
+
+.hub-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cc-muted);
+  margin-bottom: 1.25rem;
+}
+
+.hub-flow span {
+  color: var(--cc-green);
+}
+
+.hub-flow em {
+  font-style: normal;
+  color: var(--cc-gold);
+}
+
+.hub-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.hub-app-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--cc-border);
+  background: var(--cc-bg-card);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+
+.hub-app-tile:hover {
+  border-color: var(--cc-gold);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+  transform: translateY(-1px);
+}
+
+.hub-app-tile strong {
+  font-size: 0.88rem;
+  color: var(--cc-text);
+}
+
+.hub-app-tile .hub-app-port {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--cc-green);
+  letter-spacing: 0.04em;
+}
+
+.hub-app-tile .hub-app-desc {
+  font-size: 0.75rem;
+  color: var(--cc-muted);
+  line-height: 1.35;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .hub-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .hub-nav {
+    max-width: 100%;
+  }
+}
