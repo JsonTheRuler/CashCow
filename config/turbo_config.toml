@@ -1,5 +1,11 @@
-# MoneyPrinterTurbo configuration reference for Cash Cow
-# Copy to MoneyPrinterTurbo/config.toml and fill in API keys
+# MoneyPrinterTurbo configuration for Cash Cow
+# Copy to MoneyPrinterTurbo/config.toml and fill in your Pexels API key
+#
+# Verified working pipeline (2026-04-01):
+#   LLM: Pollinations AI (free, no key)
+#   TTS: edge_tts v7 with azure-tts-v2 (free, no key)
+#   Video: Pexels (free API key from https://www.pexels.com/api/)
+#   Subtitles: edge -> whisper fallback
 
 [app]
 video_source = "pexels"
@@ -8,12 +14,16 @@ hide_config = false
 # Get a free API key at https://www.pexels.com/api/
 pexels_api_keys = []
 
-# LLM provider: "g4f" requires NO API key (free)
-# Alternative: "gemini" with GEMINI_API_KEY for better quality
-llm_provider = "g4f"
+# Pollinations AI: free, no API key needed, verified working
+llm_provider = "pollinations"
+pollinations_api_key = ""
+pollinations_base_url = "https://text.pollinations.ai/openai"
+pollinations_model_name = "openai-fast"
+
+# g4f settings (alternative, but version 0.5.x is outdated — needs 7.3+)
 g4f_model_name = "gpt-3.5-turbo"
 
-# Gemini settings (if using gemini provider)
+# Gemini settings (alternative, needs free API key from Google AI Studio)
 gemini_api_key = ""
 gemini_model_name = "gemini-1.0-pro"
 
@@ -25,9 +35,13 @@ enable_redis = false
 max_concurrent_tasks = 5
 
 [whisper]
+# Used as fallback when edge subtitle generation fails
 model_size = "large-v3"
 device = "CPU"
 compute_type = "int8"
 
 [ui]
 hide_log = false
+# Use azure-tts-v2 for edge_tts v7 compatibility
+tts_server = "azure-tts-v2"
+voice_name = "en-US-AndrewNeural"
