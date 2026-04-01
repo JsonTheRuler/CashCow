@@ -215,5 +215,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Orchestrator / dashboard local state (template: state.json.example)
+state.json
+
 # Cache
 **/data_cache/

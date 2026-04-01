@@ -2,6 +2,8 @@
 
 This repo ships **[TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents)** plus a **web console** in `webapp/` (FastAPI browser UI, SSE and WebSocket progress, optional Alpaca / Tradier / webhook execution). See `pip install ".[web]"` and `ta-web` or `uvicorn webapp.main:app`. Framework and citations below refer to the upstream project.
 
+**Hackathon dashboard (Streamlit):** `pip install ".[dashboard]"` then `streamlit run dashboard.py --server.port 8502` — Polymarket trending markets, DeFi Llama stable yields, TradingAgents signals from `state.json`, MoneyPrinterTurbo hooks on `:8080`, and `bridge.py` for the pipeline sidebar button.
+
 ---
 
 <p align="center">
