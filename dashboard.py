@@ -12,12 +12,22 @@ from typing import Any
 import pandas as pd
 import requests
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+from streamlit_option_menu import option_menu
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state.json"
 LOGS_DIR = ROOT / "logs"
 API_BASE = (os.getenv("CASH_COW_API_URL") or os.getenv("CASH_COW_API") or "http://127.0.0.1:8090").rstrip("/")
 MPT_BASE = os.getenv("MONEYPRINTERTURBO_API_URL", "http://127.0.0.1:8080").rstrip("/")
+
+_NAV_OPTIONS: tuple[str, ...] = (
+    "Polymarket",
+    "TradingAgents signals",
+    "DeFi yields",
+    "Video factory",
+    "Orchestrator",
+)
 
 
 def inject_css() -> None:
@@ -79,6 +89,18 @@ def inject_css() -> None:
   .health-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
   .health-up { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
   .health-down { background: #f85149; }
+  .cc-alpha-chip {
+    display: inline-block;
+    margin-right: 0.45rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: #0a0e14;
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+    vertical-align: middle;
+  }
 </style>
 """,
         unsafe_allow_html=True,
@@ -94,6 +116,28 @@ def fetch_api_health() -> dict[str, Any] | None:
     except requests.RequestException:
         pass
     return None
+
+
+@st.cache_data(ttl=10)
+def fetch_alpha_signals_payload() -> dict[str, Any] | None:
+    try:
+        r = requests.get(f"{API_BASE}/api/v1/alpha-signals", timeout=8)
+        if r.ok:
+            return r.json()
+    except requests.RequestException:
+        pass
+    return None
+
+
+def track_copy_click(market_id: str | None, source: str) -> None:
+    try:
+        requests.post(
+            f"{API_BASE}/api/v1/track-copy-click",
+            json={"market_id": market_id, "source": source},
+            timeout=8,
+        )
+    except requests.RequestException:
+        pass
 
 
 def load_state() -> dict[str, Any]:
@@ -155,7 +199,24 @@ def render_sidebar_health() -> None:
         st.caption("Start: `uvicorn api:app --host 0.0.0.0 --port 8090`")
 
 
+def render_sidebar_alpha() -> None:
+    import alpha_signals
+
+    st.markdown("**Cash Cow Alpha**")
+    st.link_button(
+        f"Follow {alpha_signals.X_DISPLAY_NAME} on X",
+        alpha_signals.X_FOLLOW_URL,
+        use_container_width=True,
+    )
+    pay = fetch_alpha_signals_payload()
+    total = int(pay.get("copy_click_total", 0)) if pay else 0
+    st.metric("Copy-div clicks (tracked)", total)
+    st.caption(alpha_signals.DISCLAIMER_SHORT)
+
+
 def render_polymarket_tab() -> None:
+    import alpha_signals
+
     from prompts import generate_script
     from scorer import score_single, top_markets
     import sentiment
@@ -191,6 +252,47 @@ def render_polymarket_tab() -> None:
     m2.metric("Rows", len(markets))
     m3.metric("Social Δ (top)", sentiment.social_divergence_for_market(markets[0].get("question", "")))
 
+    alpha_rows = alpha_signals.list_alpha_copy_signals(markets, 10)
+    alpha_ids = {
+        str(r["market_id"])
+        for r in alpha_rows
+        if r.get("market_id") is not None and str(r["market_id"]).strip() != ""
+    }
+
+    st.divider()
+    st.markdown(f"#### {alpha_signals.PRODUCT_NAME}")
+    st.caption(
+        "Divergence-triggered watchlist for paper / educational use — not financial advice. "
+        "Bridge + API attach the same footer to generated video descriptions."
+    )
+    for j, s in enumerate(alpha_rows[:5]):
+        soft = " · soft tier" if s.get("soft_tier") else ""
+        label = (str(s.get("question") or "?")[:72] + "…") if len(str(s.get("question") or "")) > 72 else str(s.get("question") or "?")
+        with st.expander(f"{label}{soft}", expanded=False):
+            st.write(s.get("copy_frame", ""))
+            if s.get("intel_summary"):
+                st.caption(str(s.get("intel_summary")))
+            div_d = s.get("divergence_display")
+            if div_d:
+                st.caption(f"Divergence: {div_d}")
+            mid = str(s["market_id"]) if s.get("market_id") is not None else None
+            ac1, ac2 = st.columns(2)
+            with ac1:
+                if st.button("Copy This Divergence", key=f"ctd_alpha_strip_{j}", use_container_width=True):
+                    track_copy_click(mid, "dashboard_alpha_strip")
+                    row_fb: dict[str, Any] = (
+                        next((m for m in markets if str(m.get("id")) == mid), {}) if mid else {}
+                    )
+                    st.session_state[f"alpha_strip_url_{j}"] = s.get("polymarket_url") or alpha_signals.polymarket_link_for_market(
+                        row_fb
+                    )
+            with ac2:
+                pu = s.get("polymarket_url") or "https://polymarket.com"
+                st.link_button("Open Polymarket", pu, use_container_width=True)
+            if st.session_state.get(f"alpha_strip_url_{j}"):
+                st.success("Click logged. Open the market when you are ready (paper only).")
+                st.markdown(f"[Polymarket →]({st.session_state[f'alpha_strip_url_{j}']})")
+
     st.divider()
     st.markdown("#### Grok-style divergence alerts")
     for alert in sentiment.get_top_divergences(4):
@@ -217,10 +319,14 @@ def render_polymarket_tab() -> None:
         pct_w = max(0.0, min(100.0, yes))
         fill_cls = _prob_fill_class(yes)
         q_safe = html.escape(q)
+        mid_str = str(row.get("id")) if row.get("id") is not None else ""
+        alpha_chip = (
+            '<span class="cc-alpha-chip">Cash Cow Alpha</span>' if mid_str and mid_str in alpha_ids else ""
+        )
 
         st.markdown(
             f'<div class="cc-metric-card">'
-            f"<h4>{q_safe}</h4>"
+            f"<h4>{alpha_chip}{q_safe}</h4>"
             f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">'
             f'<span class="cc-score">Score {score:.1f}</span>'
             f"<span style='color:#8b949e'>YES <strong style='color:#e6edf3'>{yes:.1f}%</strong></span>"
@@ -232,7 +338,7 @@ def render_polymarket_tab() -> None:
             unsafe_allow_html=True,
         )
 
-        b1, b2 = st.columns([1, 2])
+        b1, b2, b3 = st.columns([1, 1, 1])
         with b1:
             if st.button("Preview Script", key=f"prev_{i}", use_container_width=True):
                 api_res = _preview_script_request(i, vibe)
@@ -252,16 +358,32 @@ def render_polymarket_tab() -> None:
                     if api_res is not None and not api_res.get("ok"):
                         st.caption("API fallback — local `generate_script`")
         with b2:
+            pid = mid_str if mid_str else f"idx{i}"
+            if st.button("Copy This Divergence", key=f"ctd_row_{i}_{pid}", use_container_width=True):
+                track_copy_click(mid_str or None, "dashboard_polymarket_row")
+                st.session_state[f"ctd_url_{i}"] = alpha_signals.polymarket_link_for_market(row)
+        with b3:
             pass
 
+        if st.session_state.get(f"ctd_url_{i}"):
+            st.markdown(f"[Open Polymarket →]({st.session_state[f'ctd_url_{i}']}) · click tracked (paper only)")
+
         if st.session_state.get(f"preview_{i}"):
+            prev = st.session_state[f"preview_{i}"]
             with st.expander(f"Script preview · market #{i + 1}", expanded=False):
                 st.text_area(
                     "video_subject",
-                    value=st.session_state[f"preview_{i}"].get("video_subject", ""),
+                    value=prev.get("video_subject", ""),
                     height=160,
                     key=f"ta_{i}",
                 )
+                if prev.get("video_description"):
+                    st.text_area(
+                        "video_description (Cash Cow Alpha footer for Shorts / YT)",
+                        value=prev.get("video_description", ""),
+                        height=220,
+                        key=f"vd_{i}",
+                    )
 
 
 def render_signals_tab() -> None:
@@ -339,10 +461,17 @@ def render_defi_tab() -> None:
 
 
 def render_video_factory_tab() -> None:
+    import alpha_signals
+
     from bridge import run_bridge, submit_video
     from scorer import top_markets
 
     st.subheader("Video factory")
+    st.info(
+        f"**{alpha_signals.PRODUCT_NAME}** — bridge payloads include `video_description` with X follow "
+        f"({alpha_signals.X_DISPLAY_NAME}) + educational disclaimer for platform descriptions. "
+        "Monetization (Whop / performance fee) is a later step."
+    )
     markets = top_markets(6)
     vibe_v = st.selectbox(
         "Vibe",
@@ -390,15 +519,44 @@ def render_orchestrator_tab() -> None:
 def main() -> None:
     st.set_page_config(page_title="Cash Cow", page_icon="🐄", layout="wide")
     inject_css()
+    # Periodic rerun so sidebar API health + copy-click totals stay current without manual refresh
+    st_autorefresh(interval=20_000, key="cc_dashboard_autorefresh")
 
     with st.sidebar:
         st.markdown("### 🐄 Cash Cow")
+        selected = option_menu(
+            menu_title="Navigate",
+            options=list(_NAV_OPTIONS),
+            icons=["graph-up", "cpu", "coin", "play-btn", "diagram-3"],
+            menu_icon="compass",
+            default_index=0,
+            styles={
+                "container": {"padding": "0.25rem 0", "background-color": "transparent"},
+                "icon": {"color": "#58a6ff", "font-size": "1.1rem"},
+                "nav-link": {
+                    "font-size": "0.95rem",
+                    "text-align": "left",
+                    "margin": "2px 0",
+                    "--hover-color": "#1c2430",
+                },
+                "nav-link-selected": {
+                    "background-color": "#312e81",
+                    "font-weight": 600,
+                },
+            },
+        )
+        st.caption("Live metrics: auto-refresh ~20s")
+        st.divider()
         render_sidebar_health()
+        st.divider()
+        render_sidebar_alpha()
         st.divider()
         st.caption("Ports: API **8090** · Dashboard **8502** · MPT **8080**")
 
     st.title("Cash Cow")
-    st.caption("Autonomous market intelligence — Polymarket · DeFi · Signals · Video · Orchestrator")
+    st.caption(
+        f"**{selected}** — autonomous market intelligence · Polymarket · DeFi · Signals · Video · Orchestrator"
+    )
 
     state = load_state()
     c1, c2, c3 = st.columns(3)
@@ -406,24 +564,15 @@ def main() -> None:
     c2.metric("Tickers", len(state.get("detected_tickers", [])))
     c3.metric("Signals", len(state.get("signals", [])))
 
-    tabs = st.tabs(
-        [
-            "Polymarket",
-            "TradingAgents signals",
-            "DeFi yields",
-            "Video factory",
-            "Orchestrator",
-        ]
-    )
-    with tabs[0]:
+    if selected == "Polymarket":
         render_polymarket_tab()
-    with tabs[1]:
+    elif selected == "TradingAgents signals":
         render_signals_tab()
-    with tabs[2]:
+    elif selected == "DeFi yields":
         render_defi_tab()
-    with tabs[3]:
+    elif selected == "Video factory":
         render_video_factory_tab()
-    with tabs[4]:
+    elif selected == "Orchestrator":
         render_orchestrator_tab()
 
 

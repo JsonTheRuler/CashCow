@@ -12,7 +12,7 @@ from typing import Any
 import requests
 
 from extractors import extract_tickers
-from prompts import build_video_subject
+from prompts import build_video_subject, generate_script
 from scorer import fetch_and_score
 from trading_signal import get_signal
 
@@ -66,9 +66,18 @@ def submit_video(market: dict[str, Any], vibe: str = "breaking_news") -> dict[st
     no_pct = float(market.get("no_pct", 50.0))
     volume_24h = float(market.get("volume_24h", 0.0))
     description = str(market.get("description", question))
-    video_subject = build_video_subject(vibe, question, yes_pct, no_pct, volume_24h, description)
+    bundle = generate_script(vibe, question, yes_pct, no_pct, volume_24h, description)
+    video_subject = bundle["video_subject"]
+    vid_desc = bundle.get("video_description") or video_subject
 
     payloads = [
+        {
+            "video_subject": video_subject,
+            "video_description": vid_desc[:8000],
+            "video_language": "en",
+            "aspect": "9:16",
+            "metadata": {"cash_cow_alpha_signal": bundle.get("alpha_signal")},
+        },
         {"video_subject": video_subject, "video_language": "en", "aspect": "9:16"},
         {"topic": question, "market_id": market.get("id"), "source": "polymarket", "vibe": vibe},
     ]

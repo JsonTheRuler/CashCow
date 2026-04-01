@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import alpha_signals
 import defi_pipeline
 import forecaster
 import market_analytics
@@ -24,8 +25,8 @@ import trading_signal
 
 app = FastAPI(
     title="Cash Cow API",
-    version="0.4.0",
-    description="13 REST endpoints for Polymarket, DeFi, signals, forecasts, divergences, video generation, and orchestration.",
+    version="0.5.0",
+    description="REST API for Polymarket, DeFi, signals, divergences, Cash Cow Alpha copy-trade signals, video generation, and orchestration.",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -42,6 +43,29 @@ MPT_BASE = os.getenv("MONEYPRINTERTURBO_API_URL", "http://127.0.0.1:8080").rstri
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state.json"
 LOGS_DIR = ROOT / "logs"
+
+# --- Copy-trade click analytics (in-memory + optional JSONL) ---
+_copy_click_total: int = 0
+_copy_click_by_market: dict[str, int] = {}
+
+
+def _record_copy_click(market_id: str | None, source: str) -> None:
+    global _copy_click_total
+    _copy_click_total += 1
+    key = market_id or "_unknown"
+    _copy_click_by_market[key] = _copy_click_by_market.get(key, 0) + 1
+    try:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        line_obj = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "market_id": market_id,
+            "source": source,
+        }
+        (LOGS_DIR / "copy_trade_clicks.jsonl").open("a", encoding="utf-8").write(
+            json.dumps(line_obj, ensure_ascii=False) + "\n"
+        )
+    except OSError:
+        pass
 
 
 def cached(key: str, ttl_seconds: int, fn: Callable[[], Any]) -> Any:
@@ -93,6 +117,11 @@ class GenerateBody(BaseModel):
 
 class RunCycleBody(BaseModel):
     max_videos: int = Field(2, ge=1, le=10, description="Markets to send to MoneyPrinterTurbo per cycle")
+
+
+class CopyClickBody(BaseModel):
+    market_id: str | None = Field(None, description="Polymarket / scorer market id")
+    source: str = Field("dashboard", description="dashboard | video | api")
 
 
 def _pick_market(body: GenerateBody) -> dict[str, Any]:
@@ -164,6 +193,33 @@ def api_divergences(limit: int = Query(12, ge=1, le=50)) -> dict[str, Any]:
     return {"count": len(rows), "divergences": rows}
 
 
+@app.get("/api/v1/alpha-signals", tags=["alpha"])
+def api_alpha_signals(limit: int = Query(10, ge=1, le=20)) -> dict[str, Any]:
+    """Divergence-triggered **Cash Cow Alpha Signal** rows (educational copy-trade framing)."""
+    markets = scorer.top_markets(15)
+    signals = alpha_signals.list_alpha_copy_signals(markets, limit=limit)
+    return {
+        "product": alpha_signals.PRODUCT_NAME,
+        "count": len(signals),
+        "signals": signals,
+        "x_follow_url": alpha_signals.X_FOLLOW_URL,
+        "x_display_name": alpha_signals.X_DISPLAY_NAME,
+        "copy_click_total": _copy_click_total,
+        "disclaimer": alpha_signals.DISCLAIMER_SHORT,
+    }
+
+
+@app.post("/api/v1/track-copy-click", tags=["alpha"])
+def api_track_copy_click(body: CopyClickBody) -> dict[str, Any]:
+    """Track 'Copy This Divergence' engagement (success metric: cumulative clicks)."""
+    _record_copy_click(body.market_id, body.source)
+    return {
+        "ok": True,
+        "copy_click_total": _copy_click_total,
+        "by_market": dict(sorted(_copy_click_by_market.items(), key=lambda x: -x[1])[:20]),
+    }
+
+
 # --- 8. Generate (MPT) ---
 @app.post("/api/v1/generate", tags=["video"])
 def api_generate(body: GenerateBody) -> dict[str, Any]:
@@ -176,6 +232,7 @@ def api_generate(body: GenerateBody) -> dict[str, Any]:
 
     script_bundle = prompts.generate_script(body.vibe, title, yes, no, vol, desc)
     video_subject = script_bundle["video_subject"]
+    vid_desc = script_bundle.get("video_description") or video_subject
 
     payloads_to_try: list[tuple[str, dict[str, Any]]] = [
         (
@@ -185,10 +242,13 @@ def api_generate(body: GenerateBody) -> dict[str, Any]:
                 "video_script": script_bundle.get("video_script") or "",
                 "video_language": "en",
                 "aspect": "9:16",
+                "video_description": vid_desc[:8000],
                 "metadata": {
                     "cash_cow_rank": pick.get("rank"),
                     "cash_cow_score": pick.get("cash_cow_score") or pick.get("score"),
                     "vibe": body.vibe,
+                    "cash_cow_alpha_signal": script_bundle.get("alpha_signal"),
+                    "video_description": vid_desc[:4000],
                 },
             },
         ),
@@ -281,12 +341,18 @@ def api_dashboard() -> dict[str, Any]:
                     tickers.add(t)
             except Exception:
                 pass
+        alpha_list = alpha_signals.list_alpha_copy_signals(markets, limit=10)
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "markets": markets,
             "yields": yields_list,
             "analytics": analytics,
             "divergences": divergences,
+            "alpha_signals": alpha_list,
+            "alpha_product": alpha_signals.PRODUCT_NAME,
+            "x_follow_url": alpha_signals.X_FOLLOW_URL,
+            "x_display_name": alpha_signals.X_DISPLAY_NAME,
+            "copy_click_total": _copy_click_total,
             "state": state,
             "suggested_tickers": sorted(tickers)[:12],
             "video_tasks": tasks[:20],

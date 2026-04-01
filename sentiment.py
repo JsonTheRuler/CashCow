@@ -66,15 +66,27 @@ def get_top_divergences(limit: int = 12) -> list[dict[str, Any]]:
     return ranked[: max(1, limit)]
 
 
-def social_divergence_for_market(market_question: str) -> str:
+def get_market_divergence_detail(market_question: str) -> dict[str, Any]:
     """
-    Short label for UI tables: best matching alert divergence index, else a stable heuristic.
+    Structured divergence for alpha / copy-trade logic.
+
+    Returns display label, numeric index (higher = stronger theme match or heuristic),
+    and whether a Grok-style alert keyword-matched the question.
     """
     q = (market_question or "").lower().strip()
     if not q:
-        return "—"
+        return {
+            "display": "—",
+            "index": None,
+            "matched_alert": False,
+            "alert_summary": "",
+            "social_sentiment": "",
+        }
     best_idx = 0.0
     best_label = ""
+    best_summary = ""
+    best_soc = ""
+    matched = False
     for alert in _load_raw_alerts():
         kws = alert.get("title_keywords") or []
         if not kws:
@@ -88,13 +100,36 @@ def social_divergence_for_market(market_question: str) -> str:
             idx = 0.0
         if idx >= best_idx:
             best_idx = idx
-            soc = str(alert.get("social_sentiment") or "").replace("_", " ")[:16]
+            matched = True
+            best_soc = str(alert.get("social_sentiment") or "")
+            best_summary = str(alert.get("summary") or "")
+            soc = best_soc.replace("_", " ")[:20]
             best_label = f"{idx:.1f}" + (f" ({soc})" if soc else "")
     if best_label:
-        return best_label
-    # Deterministic mild divergence when no keyword match (hackathon demo)
+        return {
+            "display": best_label,
+            "index": best_idx,
+            "matched_alert": matched,
+            "alert_summary": best_summary,
+            "social_sentiment": best_soc,
+        }
     h = abs(hash(q)) % 70
-    return f"~{h / 10:.1f}"
+    approx = h / 10.0
+    return {
+        "display": f"~{approx:.1f}",
+        "index": approx,
+        "matched_alert": False,
+        "alert_summary": "",
+        "social_sentiment": "",
+    }
+
+
+def social_divergence_for_market(market_question: str) -> str:
+    """
+    Short label for UI tables: best matching alert divergence index, else a stable heuristic.
+    """
+    detail = get_market_divergence_detail(market_question)
+    return str(detail.get("display") or "—")
 
 
 if __name__ == "__main__":

@@ -172,15 +172,21 @@ def generate_script(
     no_pct: float,
     volume_24h: float,
     description: str,
+    *,
+    include_alpha_branding: bool = True,
 ) -> dict[str, Any]:
     """
     Build the MoneyPrinterTurbo video subject/script bundle for API and dashboard.
 
     ``video_subject`` is the paragraph MoneyPrinterTurbo consumes; ``video_script`` is reserved
-    for future structured beats.
+    for future structured beats. With ``include_alpha_branding``, appends **Cash Cow Alpha Signal**
+    footer for descriptions / Polymarket copy-trade positioning (educational only).
     """
+    import alpha_signals
+    import sentiment
+
     subject = build_video_subject(vibe, question, yes_pct, no_pct, volume_24h, description)
-    return {
+    out: dict[str, Any] = {
         "vibe": vibe,
         "question": question,
         "yes_pct": yes_pct,
@@ -189,6 +195,23 @@ def generate_script(
         "video_subject": subject,
         "video_script": "",
     }
+    if include_alpha_branding:
+        d = sentiment.get_market_divergence_detail(question)
+        disp = str(d.get("display") or "—")
+        footer = (
+            f"\n\n---\n{alpha_signals.PRODUCT_NAME}: real-time X/social layer vs Polymarket odds "
+            f"diverged (Δ {disp}). YES ~{yes_pct:.0f}% / NO ~{no_pct:.0f}%. "
+            f"Follow {alpha_signals.X_DISPLAY_NAME} on X: {alpha_signals.X_FOLLOW_URL}. "
+            f"{alpha_signals.DISCLAIMER_SHORT}"
+        )
+        out["video_description"] = (subject + footer).strip()
+        out["alpha_signal"] = {
+            "product": alpha_signals.PRODUCT_NAME,
+            "divergence_display": disp,
+            "x_follow_url": alpha_signals.X_FOLLOW_URL,
+            "x_display_name": alpha_signals.X_DISPLAY_NAME,
+        }
+    return out
 
 
 if __name__ == "__main__":
