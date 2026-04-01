@@ -301,6 +301,7 @@ def run_pipeline(market_count: int = 3, generate: bool = True) -> dict[str, Any]
     run_data: dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "markets": [],
+        "insider_alerts": [],
         "yields": [],
         "videos": [],
     }
@@ -326,8 +327,45 @@ def run_pipeline(market_count: int = 3, generate: bool = True) -> dict[str, Any]
         )
     run_data["markets"] = details
 
+    # 1b. Insider activity scan
+    print("\n[1b/4] Scanning for insider activity...")
+    insider_hooks: dict[str, str] = {}  # slug -> video hook
+    try:
+        from insider.scanner import scan_market as _scan_market
+        from insider.formatter import format_video_hook, format_state_entry
+
+        for d, raw_m in zip(details, markets):
+            cond_id = raw_m.get("conditionId", raw_m.get("condition_id", ""))
+            if not cond_id:
+                continue
+            alerts = _scan_market(
+                condition_id=cond_id,
+                market_slug=d.get("slug", ""),
+                market_question=d["question"],
+                market_volume_24h=d["volume_24h"],
+                trade_limit=20,
+            )
+            if alerts:
+                best = max(alerts, key=lambda a: a.weighted_score)
+                d["score"] = min(100, d["score"] + 25)  # insider boost
+                d["insider_alert"] = True
+                insider_hooks[d.get("slug", "")] = format_video_hook(best)
+                run_data["insider_alerts"].append(format_state_entry(best))
+                print(
+                    f"  [!] {d['question'][:50]} — "
+                    f"{best.risk_level.value} risk (score +25)"
+                )
+        if not insider_hooks:
+            print("  No suspicious activity detected")
+
+        # Re-sort after insider boosts
+        details.sort(key=lambda x: x["score"], reverse=True)
+    except Exception as e:
+        logger.warning(f"Insider scan failed (non-fatal): {e}")
+        print(f"  (Insider scan unavailable: {e})")
+
     # 2. Fetch top yields
-    print("\n[2/3] Fetching top DeFi yields...")
+    print("\n[2/4] Fetching top DeFi yields...")
     yields = get_top_yields(3)
     if yields:
         for y in yields:
@@ -342,9 +380,11 @@ def run_pipeline(market_count: int = 3, generate: bool = True) -> dict[str, Any]
 
     # 3. Generate videos for top markets
     if generate:
-        print("\n[3/3] Generating videos...")
+        print("\n[3/4] Generating videos...")
         for i, d in enumerate(details, 1):
-            topic = market_to_video_topic(d)
+            slug = d.get("slug", "")
+            hook = insider_hooks.get(slug, "")
+            topic = (hook + " " if hook else "") + market_to_video_topic(d)
             print(f"\n  Generating video #{i}: {d['question'][:50]}...")
             try:
                 result = generate_video(topic)
@@ -359,7 +399,7 @@ def run_pipeline(market_count: int = 3, generate: bool = True) -> dict[str, Any]
                     {"task_id": None, "topic": topic, "error": str(e)}
                 )
     else:
-        print("\n[3/3] Skipping video generation (--dry-run)")
+        print("\n[3/4] Skipping video generation (--dry-run)")
 
     # Log
     log_path = log_run(run_data)

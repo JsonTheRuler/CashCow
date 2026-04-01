@@ -93,6 +93,7 @@ def run_once(
         "last_run": datetime.now().isoformat(),
         "status": "running",
         "markets": [],
+        "insider_alerts": [],
         "signals": [],
         "forecasts": [],
         "yields": [],
@@ -122,8 +123,36 @@ def run_once(
         logger.error(f"Market fetch failed: {e}")
         state["errors"].append({"stage": "markets", "error": str(e)})
 
+    # 1b. Insider activity scan
+    print("\n[1b/6] Scanning for insider activity...")
+    try:
+        from insider.scanner import scan_market as _insider_scan
+        from insider.formatter import format_state_entry
+
+        for d, raw_m in zip(details, raw_markets):
+            cond_id = raw_m.get("conditionId", raw_m.get("condition_id", ""))
+            if not cond_id:
+                continue
+            alerts = _insider_scan(
+                condition_id=cond_id,
+                market_slug=d.get("slug", ""),
+                market_question=d.get("question", ""),
+                market_volume_24h=d.get("volume_24h", 0),
+                trade_limit=20,
+            )
+            for a in alerts:
+                state["insider_alerts"].append(format_state_entry(a))
+                d["score"] = min(100, d.get("score", 0) + 25)
+                print(f"  [!] {a.risk_level.value}: {d.get('question', '')[:50]}")
+        if not state["insider_alerts"]:
+            print("  No suspicious activity detected")
+        details.sort(key=lambda x: x.get("score", 0), reverse=True)
+    except Exception as e:
+        logger.warning(f"Insider scan failed: {e}")
+        state["errors"].append({"stage": "insider", "error": str(e)})
+
     # 2. Trading signals
-    print("\n[2/5] Getting trading signals...")
+    print("\n[2/6] Getting trading signals...")
     try:
         signals = get_signals_for_markets(details)
         state["signals"] = signals
@@ -136,7 +165,7 @@ def run_once(
         state["errors"].append({"stage": "signals", "error": str(e)})
 
     # 3. Forecasts
-    print("\n[3/5] Running price forecasts...")
+    print("\n[3/6] Running price forecasts...")
     try:
         for market in raw_markets[:3]:
             fc = forecast_market(market)
@@ -149,7 +178,7 @@ def run_once(
         state["errors"].append({"stage": "forecasts", "error": str(e)})
 
     # 4. DeFi yields
-    print("\n[4/5] Fetching DeFi yields...")
+    print("\n[4/6] Fetching DeFi yields...")
     try:
         yields = get_top_yields(5)
         state["yields"] = yields
@@ -164,7 +193,7 @@ def run_once(
 
     # 5. Video generation
     if generate_videos and details:
-        print("\n[5/5] Generating videos...")
+        print("\n[5/6] Generating videos...")
         for d in details[:3]:
             topic = market_to_video_topic(d)
             try:
