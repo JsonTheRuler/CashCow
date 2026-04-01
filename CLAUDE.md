@@ -496,3 +496,21 @@ The hackathon demo is "done" when:
 - [ ] `python -m app.cli status` shows system health
 
 **If everything breaks, `python -m app.demo` is the fallback. Build it early.**
+
+---
+
+## This repository (merged monorepo)
+
+The following paths are **in-tree** on `main` / `feature/tradingagents-web-console` (not gitignored):
+
+| Component | Location | Run |
+|-----------|-----------|-----|
+| TradingAgents (upstream framework) | `tradingagents/`, `cli/`, `main.py` | `tradingagents` CLI or `python main.py` |
+| FastAPI web console | `webapp/` | `ta-web` or `uvicorn webapp.main:app --port 8765` |
+| Streamlit dashboard | `dashboard.py` (repo root) | `streamlit run dashboard.py --server.port 8502` |
+| Pipeline bridge (sidebar) | `bridge.py` (repo root) | `python bridge.py` |
+| Orchestrator state | `state.json` (gitignored; template `state.json.example`) | — |
+
+Install: `pip install -e ".[web,dashboard]"` (see `pyproject.toml`).
+
+**Note:** The scaffold above references `app/`, `bridge/`, `dashboard/dashboard.py`. This fork may use root-level `bridge.py` and `dashboard.py` until those packages are aligned. PRs target `main` (one feature per PR).

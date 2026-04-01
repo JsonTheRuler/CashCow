@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TradingAgents Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --panel: #141a22;
+      --border: #243044;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3d9ee5;
+      --accent-dim: #2a6fa8;
+      --ok: #4ad29a;
+      --warn: #e8b84a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      background-image:
+        radial-gradient(ellipse 120% 80% at 10% -20%, rgba(61, 158, 229, 0.12), transparent),
+        radial-gradient(ellipse 80% 60% at 100% 0%, rgba(74, 210, 154, 0.06), transparent);
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      line-height: 1.5;
+    }
+    .sub a { color: var(--accent); }
+    form {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: grid;
+      gap: 1rem;
+    }
+    label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    input, select {
+      width: 100%;
+      margin-top: 0.35rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0a0d11;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+    }
+    input:focus, select:focus {
+      outline: 2px solid var(--accent-dim);
+      border-color: var(--accent);
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+    .checks { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; margin-top: 0.5rem; }
+    .checks label { text-transform: none; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+    .checks input { width: auto; margin: 0; }
+    button[type="submit"] {
+      margin-top: 0.5rem;
+      padding: 0.85rem 1.25rem;
+      font-weight: 600;
+      font-size: 1rem;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status {
+      margin-top: 1.25rem;
+      padding: 1rem 1.25rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: none;
+    }
+    #status.visible { display: block; }
+    #status.running { border-color: var(--accent); color: var(--accent); }
+    #status.error { border-color: #c45c5c; color: #f0a0a0; }
+    #status.done { border-color: var(--ok); }
+    #out {
+      margin-top: 1.5rem;
+      padding: 1.25rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      display: none;
+    }
+    #out.visible { display: block; }
+    #out h2 { font-size: 1.1rem; margin: 0 0 1rem; color: var(--ok); }
+    .rating {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--warn);
+      margin-bottom: 1rem;
+    }
+    .excerpt {
+      font-size: 0.9rem;
+      line-height: 1.55;
+      color: var(--muted);
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+    .health {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+      font-family: "JetBrains Mono", monospace;
+    }
+    .health span { margin-right: 1rem; }
+    .health .on { color: var(--ok); }
+    .health .off { color: #666; }
+    #streamLog {
+      margin-top: 1rem;
+      display: none;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0a0d11;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #streamLog.visible { display: block; }
+    .stream-tools { color: var(--accent); }
+    .hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TradingAgents Console</h1>
+    <p class="sub">
+      Runs the <a href="https://github.com/TauricResearch/TradingAgents" target="_blank" rel="noopener">TauricResearch/TradingAgents</a> LangGraph pipeline (same as the CLI). Optional <strong>SSE</strong> or <strong>WebSocket</strong> progress, then paper ledger, <strong>Alpaca</strong>, <strong>Tradier</strong>, or a custom <strong>webhook</strong>. Not financial advice.
+    </p>
+    <div class="health" id="health">Checking API keys…</div>
+
+    <form id="f">
+      <div class="row">
+        <div>
+          <label for="ticker">Ticker</label>
+          <input id="ticker" name="ticker" value="SPY" required />
+        </div>
+        <div>
+          <label for="date">Analysis date</label>
+          <input id="date" name="analysis_date" type="date" required />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="provider">LLM provider</label>
+          <select id="provider" name="llm_provider">
+            <option value="openai">OpenAI</option>
+            <option value="google">Google Gemini</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="xai">xAI Grok</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="ollama">Ollama (local)</option>
+          </select>
+        </div>
+        <div>
+          <label for="exec">After analysis</label>
+          <select id="exec" name="execution_mode">
+            <option value="paper">Paper ledger (recommended)</option>
+            <option value="none">Analysis only</option>
+            <option value="alpaca">Alpaca</option>
+            <option value="tradier">Tradier</option>
+            <option value="webhook">Webhook (EXECUTION_WEBHOOK_URL)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="quick">Quick model (optional)</label>
+          <input id="quick" name="quick_think_llm" placeholder="default from package" />
+        </div>
+        <div>
+          <label for="deep">Deep model (optional)</label>
+          <input id="deep" name="deep_think_llm" placeholder="default from package" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="rounds">Debate rounds</label>
+          <input id="rounds" name="max_debate_rounds" type="number" min="1" max="5" value="1" />
+        </div>
+        <div>
+          <label for="qty">Order size (shares if ≥1, else notional $ for Alpaca)</label>
+          <input id="qty" name="order_qty" type="number" min="0.01" step="any" value="1" />
+        </div>
+      </div>
+      <div>
+        <label>Analysts</label>
+        <div class="checks">
+          <label><input type="checkbox" name="analysts" value="market" checked /> Market</label>
+          <label><input type="checkbox" name="analysts" value="social" checked /> Social</label>
+          <label><input type="checkbox" name="analysts" value="news" checked /> News</label>
+          <label><input type="checkbox" name="analysts" value="fundamentals" checked /> Fundamentals</label>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:0.5rem;text-transform:none;color:var(--text);">
+        <input type="checkbox" id="alpacaPaper" checked /> Alpaca paper endpoint (uncheck for live — use at your own risk)
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;text-transform:none;color:var(--text);">
+        <input type="checkbox" id="useStream" checked /> Stream agent progress (Server-Sent Events, like the CLI)
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;text-transform:none;color:var(--text);">
+        <input type="checkbox" id="useWs" /> Use WebSocket instead of SSE (same events; send one JSON message after connect)
+      </label>
+      <p class="hint">WebSocket URL: same host, path <code>/ws/run</code> — send one JSON object (same fields as this form). If both WebSocket and SSE are checked, WebSocket is used.</p>
+      <button type="submit" id="go">Run analysis</button>
+    </form>
+
+    <div id="streamLog"></div>
+    <div id="status"></div>
+    <div id="out">
+      <h2>Result</h2>
+      <div class="rating" id="rating"></div>
+      <pre class="excerpt" id="excerpt"></pre>
+      <pre class="excerpt" id="execjson" style="margin-top:1rem;color:var(--accent);"></pre>
+    </div>
+  </main>
+  <script>
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById("date").value = today;
+    document.getElementById("date").max = today;
+
+    async function refreshHealth() {
+      const el = document.getElementById("health");
+      try {
+        const r = await fetch("/api/health");
+        const h = await r.json();
+        const chip = (k, v) => `<span>${k}: <span class="${v ? "on" : "off"}">${v ? "on" : "off"}</span></span>`;
+        el.innerHTML =
+          chip("OpenAI", h.openai) +
+          chip("Google", h.google) +
+          chip("Anthropic", h.anthropic) +
+          chip("Alpaca", h.alpaca) +
+          chip("Tradier", h.tradier) +
+          chip("Webhook", h.webhook);
+      } catch {
+        el.textContent = "Could not reach /api/health — is the server running?";
+      }
+    }
+    refreshHealth();
+
+    document.getElementById("f").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("go");
+      const st = document.getElementById("status");
+      const out = document.getElementById("out");
+      const checks = [...document.querySelectorAll('input[name="analysts"]:checked')].map((x) => x.value);
+      if (checks.length === 0) {
+        st.className = "visible error";
+        st.textContent = "Select at least one analyst.";
+        return;
+      }
+
+      const payload = {
+        ticker: document.getElementById("ticker").value.trim(),
+        analysis_date: document.getElementById("date").value,
+        llm_provider: document.getElementById("provider").value,
+        execution_mode: document.getElementById("exec").value,
+        max_debate_rounds: parseInt(document.getElementById("rounds").value, 10),
+        order_qty: parseFloat(document.getElementById("qty").value),
+        analysts: checks,
+        output_language: "English",
+        alpaca_paper: document.getElementById("alpacaPaper").checked,
+      };
+      const q = document.getElementById("quick").value.trim();
+      const d = document.getElementById("deep").value.trim();
+      if (q) payload.quick_think_llm = q;
+      if (d) payload.deep_think_llm = d;
+
+      btn.disabled = true;
+      out.classList.remove("visible");
+      const logEl = document.getElementById("streamLog");
+      const useStream = document.getElementById("useStream").checked;
+      const useWs = document.getElementById("useWs").checked;
+      logEl.textContent = "";
+      logEl.classList.toggle("visible", useStream || useWs);
+
+      function appendLog(line) {
+        logEl.textContent += line + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      st.className = "visible running";
+      st.textContent = "Running multi-agent graph (often several minutes). Leave this tab open…";
+
+      function showResult(data) {
+        st.className = "visible done";
+        st.textContent = "Finished. Ledger append (if any) uses TRADINGAGENTS_RESULTS_DIR or ./results.";
+        out.classList.add("visible");
+        document.getElementById("rating").textContent = "Extracted rating: " + data.rating;
+        document.getElementById("excerpt").textContent = data.final_decision_excerpt || "";
+        document.getElementById("execjson").textContent = JSON.stringify(data.execution, null, 2);
+      }
+
+      try {
+        if (useWs) {
+          await new Promise((resolve, reject) => {
+            const proto = location.protocol === "https:" ? "wss:" : "ws:";
+            const sock = new WebSocket(`${proto}//${location.host}/ws/run`);
+            sock.onerror = () => reject(new Error("WebSocket failed"));
+            sock.onmessage = (ev) => {
+              let msg;
+              try {
+                msg = JSON.parse(ev.data);
+              } catch {
+                appendLog(ev.data);
+                return;
+              }
+              if (msg.type === "step") {
+                const s = msg.payload.summary || {};
+                const lm = s.last_message || {};
+                const tools = (lm.tool_calls || []).join(", ");
+                let line = `#${msg.payload.index} msgs=${s.message_count} ${lm.class || ""}`;
+                if (lm.preview) line += " " + lm.preview.slice(0, 120);
+                if (tools) line += " [tools: " + tools + "]";
+                appendLog(line);
+              } else if (msg.type === "complete") {
+                showResult({
+                  rating: msg.payload.rating,
+                  final_decision_excerpt: msg.payload.final_decision_excerpt,
+                  execution: msg.payload.execution,
+                });
+                sock.close();
+                resolve();
+              } else if (msg.type === "error") {
+                sock.close();
+                reject(new Error(msg.payload));
+              }
+            };
+            sock.onopen = () => sock.send(JSON.stringify(payload));
+          });
+        } else if (useStream) {
+          const res = await fetch("/api/run/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            st.className = "visible error";
+            st.textContent = "Error: " + (err.detail || res.statusText);
+            return;
+          }
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const parts = buf.split("\n\n");
+            buf = parts.pop() || "";
+            for (const block of parts) {
+              const lines = block.split("\n");
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const ev = JSON.parse(line.slice(6));
+                if (ev.type === "step") {
+                  const s = ev.payload.summary || {};
+                  const lm = s.last_message || {};
+                  const tools = (lm.tool_calls || []).join(", ");
+                  let t = `#${ev.payload.index} msgs=${s.message_count} ${lm.class || ""}`;
+                  if (lm.preview) t += " " + lm.preview.slice(0, 120);
+                  if (tools) t += " [tools: " + tools + "]";
+                  appendLog(t);
+                } else if (ev.type === "complete") {
+                  showResult({
+                    rating: ev.payload.rating,
+                    final_decision_excerpt: ev.payload.final_decision_excerpt,
+                    execution: ev.payload.execution,
+                  });
+                } else if (ev.type === "error") {
+                  throw new Error(ev.payload);
+                }
+              }
+            }
+          }
+        } else {
+          const res = await fetch("/api/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            st.className = "visible error";
+            st.textContent = "Error: " + (data.detail || JSON.stringify(data));
+            return;
+          }
+          showResult(data);
+        }
+      } catch (err) {
+        st.className = "visible error";
+        st.textContent = String(err);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

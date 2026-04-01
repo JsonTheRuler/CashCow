@@ -1,0 +1,18 @@
+{
+  "pipeline_status": "stopped",
+  "last_pipeline_trigger": null,
+  "signals": [
+    {
+      "ticker": "SPY",
+      "rating": "HOLD",
+      "summary": "Sample orchestrator output — replace with TradingAgents / TimesFM results."
+    },
+    {
+      "ticker": "NVDA",
+      "rating": "BUY",
+      "summary": "Bullish technicals in sample data; not real analysis."
+    }
+  ],
+  "detected_tickers": ["SPY", "NVDA"],
+  "notes": "Copy to state.json or let bridge.py / orchestrator write this file."
+}
