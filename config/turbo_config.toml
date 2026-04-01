@@ -1,0 +1,33 @@
+# MoneyPrinterTurbo configuration reference for Cash Cow
+# Copy to MoneyPrinterTurbo/config.toml and fill in API keys
+
+[app]
+video_source = "pexels"
+hide_config = false
+
+# Get a free API key at https://www.pexels.com/api/
+pexels_api_keys = []
+
+# LLM provider: "g4f" requires NO API key (free)
+# Alternative: "gemini" with GEMINI_API_KEY for better quality
+llm_provider = "g4f"
+g4f_model_name = "gpt-3.5-turbo"
+
+# Gemini settings (if using gemini provider)
+gemini_api_key = ""
+gemini_model_name = "gemini-1.0-pro"
+
+# TTS: edge is free, no key needed
+subtitle_provider = "edge"
+
+# Redis: disabled for local dev
+enable_redis = false
+max_concurrent_tasks = 5
+
+[whisper]
+model_size = "large-v3"
+device = "CPU"
+compute_type = "int8"
+
+[ui]
+hide_log = false
