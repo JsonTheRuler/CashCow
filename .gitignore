@@ -217,6 +217,8 @@ __marimo__/
 
 # Orchestrator / dashboard local state (template: state.json.example)
 state.json
+logs/last_plan.json
+logs/copy_trade_clicks.jsonl
 
 # Cache
 **/data_cache/
