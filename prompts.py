@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict
+from typing import Any, Callable, Dict
 
 
 TemplateFn = Callable[[str, float, float, float, str], str]
@@ -163,6 +163,32 @@ def build_video_subject(
         supported = ", ".join(sorted(PROMPT_BUILDERS))
         raise ValueError(f"Unsupported vibe '{vibe}'. Supported vibes: {supported}.") from exc
     return builder(question, yes_pct, no_pct, volume_24h, description)
+
+
+def generate_script(
+    vibe: str,
+    question: str,
+    yes_pct: float,
+    no_pct: float,
+    volume_24h: float,
+    description: str,
+) -> dict[str, Any]:
+    """
+    Build the MoneyPrinterTurbo video subject/script bundle for API and dashboard.
+
+    ``video_subject`` is the paragraph MoneyPrinterTurbo consumes; ``video_script`` is reserved
+    for future structured beats.
+    """
+    subject = build_video_subject(vibe, question, yes_pct, no_pct, volume_24h, description)
+    return {
+        "vibe": vibe,
+        "question": question,
+        "yes_pct": yes_pct,
+        "no_pct": no_pct,
+        "volume_24h": volume_24h,
+        "video_subject": subject,
+        "video_script": "",
+    }
 
 
 if __name__ == "__main__":

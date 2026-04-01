@@ -1,0 +1,29 @@
+[
+  {
+    "id": "grok-sample-election-turnout",
+    "title_keywords": ["election", "turnout", "vote", "president"],
+    "divergence_index": 7.8,
+    "social_sentiment": "high_angst",
+    "market_yes_implied": 51,
+    "summary": "Social feeds skew catastrophic while odds sit near coin-flip—classic attention divergence.",
+    "source": "grok_intel_template"
+  },
+  {
+    "id": "grok-sample-ai-regulation",
+    "title_keywords": ["ai", "regulation", "openai", "chip"],
+    "divergence_index": 6.9,
+    "social_sentiment": "regulatory_fear",
+    "market_yes_implied": 38,
+    "summary": "Narrative velocity on X exceeds implied probability moves; watch for headline shocks.",
+    "source": "grok_intel_template"
+  },
+  {
+    "id": "grok-sample-sports",
+    "title_keywords": ["nba", "nfl", "super bowl", "championship"],
+    "divergence_index": 5.2,
+    "social_sentiment": "fan_overconfidence",
+    "market_yes_implied": 58,
+    "summary": "Crowd hype vs market line—smaller gap but good for short-form 'fade the fans' angles.",
+    "source": "grok_intel_template"
+  }
+]

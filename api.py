@@ -1,4 +1,4 @@
-"""Cash Cow unified REST API — port 8090."""
+"""Cash Cow unified REST API — port 8090 (flat root modules)."""
 
 from __future__ import annotations
 
@@ -14,18 +14,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import defi_pipeline
-import forecaster
 import market_analytics
-import orchestrator
+import prompts
 import scorer
+import sentiment
 import trading_signal
 
-try:
-    from prompts import build_video_subject
-except ImportError:
-    build_video_subject = None  # type: ignore[misc, assignment]
-
-app = FastAPI(title="Cash Cow API", version="0.2.0", description="Unified backend for dashboard + integrations")
+app = FastAPI(title="Cash Cow API", version="0.3.0", description="Unified backend for dashboard + integrations")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -85,11 +80,21 @@ def _probe_get(url: str, timeout: float = 4.0) -> bool:
 
 class GenerateBody(BaseModel):
     market_index: int = Field(0, ge=0, description="Index into ranked markets (0 = top)")
-    vibe: str = Field("breaking_news", description="Video vibe for subject builder")
+    vibe: str = Field("breaking_news", description="Video vibe for generate_script")
+
+
+def _pick_market(body: GenerateBody) -> dict[str, Any]:
+    ranked = scorer.top_markets(max(15, body.market_index + 1))
+    if not ranked:
+        raise HTTPException(status_code=503, detail="No markets available from Polymarket")
+    if body.market_index >= len(ranked):
+        raise HTTPException(status_code=400, detail="market_index out of range")
+    return ranked[body.market_index]
 
 
 @app.get("/api/v1/health")
 def health() -> dict[str, Any]:
+    """Probe Polymarket Gamma, DeFi Llama yields, and MoneyPrinterTurbo."""
     poly_ok = _probe_get("https://gamma-api.polymarket.com/markets?limit=1&active=true", timeout=6.0)
     llama_ok = False
     for u in ("https://yields.llama.fi/pools", "https://api.llama.fi/pools"):
@@ -130,80 +135,60 @@ def api_analytics() -> dict[str, Any]:
     return cached("analytics", 30, lambda: market_analytics.full_analytics(25))
 
 
-@app.get("/api/v1/forecast/{token_id}")
-def api_forecast(token_id: str) -> dict[str, Any]:
-    return forecaster.forecast_market(token_id)
-
-
-@app.get("/api/v1/orchestrator/plan")
-def api_orchestrator_plan() -> dict[str, Any]:
-    return orchestrator.get_last_plan()
+@app.get("/api/v1/divergences")
+def api_divergences(limit: int = Query(12, ge=1, le=50)) -> dict[str, Any]:
+    rows = cached(f"divergences_{limit}", 20, lambda: sentiment.get_top_divergences(limit))
+    return {"count": len(rows), "divergences": rows}
 
 
 @app.post("/api/v1/generate")
 def api_generate(body: GenerateBody) -> dict[str, Any]:
-    ranked = scorer.top_markets(max(15, body.market_index + 1))
-    if not ranked:
-        raise HTTPException(status_code=503, detail="No markets available from Polymarket")
-    if body.market_index >= len(ranked):
-        raise HTTPException(status_code=400, detail="market_index out of range")
-    pick = ranked[body.market_index]
-    sd = pick.get("source_data") or {}
-    title = pick.get("question") or sd.get("question") or "Polymarket"
-    yes = float(sd.get("yes_pct") or pick.get("yes_pct") or 50.0)
-    no = float(sd.get("no_pct") or pick.get("no_pct") or 50.0)
-    vol = float(sd.get("volume_24h") or pick.get("volume_24h") or 0.0)
-    desc = str(sd.get("description") or "")
+    pick = _pick_market(body)
+    title = pick.get("question") or "Polymarket"
+    yes = float(pick.get("yes_pct") or 50.0)
+    no = float(pick.get("no_pct") or 50.0)
+    vol = float(pick.get("volume_24h") or 0.0)
+    desc = str(pick.get("description") or pick.get("source_data", {}).get("description") or title)
 
-    payloads_to_try: list[tuple[str, dict[str, Any]]] = []
+    script_bundle = prompts.generate_script(body.vibe, title, yes, no, vol, desc)
+    video_subject = script_bundle["video_subject"]
 
-    if build_video_subject:
-        try:
-            video_subject = build_video_subject(
-                body.vibe,
-                title,
-                yes,
-                no,
-                vol,
-                desc or title,
-            )
-        except ValueError:
-            video_subject = None
-        if video_subject:
-            payloads_to_try.append(
-                (
-                    "mpt_v1",
-                    {
-                        "video_subject": video_subject,
-                        "video_language": "en",
-                        "aspect": "9:16",
-                        "metadata": {
-                            "cash_cow_rank": pick.get("rank"),
-                            "cash_cow_score": pick.get("cash_cow_score"),
-                            "vibe": body.vibe,
-                        },
-                    },
-                )
-            )
-
-    raw_pm = pick.get("raw_polymarket") or {}
-    payloads_to_try.extend(
-        [
-            (
-                "generic_videos",
-                {
-                    "topic": title,
-                    "slug": raw_pm.get("slug"),
-                    "market_id": pick.get("id"),
-                    "source": "polymarket",
+    payloads_to_try: list[tuple[str, dict[str, Any]]] = [
+        (
+            "mpt_from_script",
+            {
+                "video_subject": video_subject,
+                "video_script": script_bundle.get("video_script") or "",
+                "video_language": "en",
+                "aspect": "9:16",
+                "metadata": {
+                    "cash_cow_rank": pick.get("rank"),
+                    "cash_cow_score": pick.get("cash_cow_score") or pick.get("score"),
                     "vibe": body.vibe,
                 },
-            ),
-            (
-                "minimal",
-                {"topic": title, "market_id": pick.get("id")},
-            ),
-        ]
+            },
+        ),
+        (
+            "mpt_legacy",
+            {
+                "video_subject": video_subject,
+                "video_language": "en",
+                "aspect": "9:16",
+            },
+        ),
+    ]
+    raw_pm = pick.get("raw_polymarket") or {}
+    payloads_to_try.append(
+        (
+            "generic_topic",
+            {
+                "topic": title,
+                "slug": raw_pm.get("slug"),
+                "market_id": pick.get("id"),
+                "source": "polymarket",
+                "vibe": body.vibe,
+            },
+        )
     )
 
     urls = [
@@ -228,6 +213,7 @@ def api_generate(body: GenerateBody) -> dict[str, Any]:
                         "task_id": tid,
                         "endpoint": url,
                         "payload_style": label,
+                        "script": script_bundle,
                         "response": data,
                     }
                 last_error = f"{url} [{label}]: HTTP {r.status_code} {r.text[:200]}"
@@ -242,6 +228,7 @@ def api_dashboard() -> dict[str, Any]:
         markets = scorer.top_markets(12)
         yields_list = defi_pipeline.get_top_yield_pools()
         analytics = market_analytics.full_analytics(25)
+        divergences = sentiment.get_top_divergences(12)
         state = _load_state()
         tasks: list[dict[str, Any]] = []
         for path in ("/api/v1/tasks", "/tasks"):
@@ -274,11 +261,11 @@ def api_dashboard() -> dict[str, Any]:
             "markets": markets,
             "yields": yields_list,
             "analytics": analytics,
+            "divergences": divergences,
             "state": state,
             "suggested_tickers": sorted(tickers)[:12],
             "video_tasks": tasks[:20],
             "pipeline_log_tail": _read_pipeline_log(),
-            "orchestrator": orchestrator.get_last_plan(),
         }
 
     return cached("dashboard_bundle", 30, _build)
