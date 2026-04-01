@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cash Cow Streamlit dashboard — flat root imports (no sys.path hacks)."""
+"""Cash Cow Streamlit dashboard — root imports only, no sys.path hacks."""
 
 from __future__ import annotations
 
@@ -9,12 +9,14 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import requests
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state.json"
 LOGS_DIR = ROOT / "logs"
+API_BASE = (os.getenv("CASH_COW_API_URL") or os.getenv("CASH_COW_API") or "http://127.0.0.1:8090").rstrip("/")
 MPT_BASE = os.getenv("MONEYPRINTERTURBO_API_URL", "http://127.0.0.1:8080").rstrip("/")
 
 
@@ -22,17 +24,23 @@ def inject_css() -> None:
     st.markdown(
         """
 <style>
-  .stApp { background: linear-gradient(180deg, #0d1117 0%, #0a0e14 100%); }
-  section[data-testid="stSidebar"] { background-color: #111827; border-right: 1px solid #30363d; }
+  .stApp {
+    background: linear-gradient(165deg, #0a0e14 0%, #0d1117 40%, #111827 100%);
+    color: #e6edf3;
+  }
+  section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #111827 0%, #0d1117 100%);
+    border-right: 1px solid #30363d;
+  }
   .cc-metric-card {
     background: linear-gradient(145deg, #161b22 0%, #1c2430 100%);
     border: 1px solid #30363d;
     border-radius: 14px;
     padding: 1rem 1.15rem;
     margin-bottom: 0.75rem;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.35);
   }
-  .cc-metric-card h4 { margin: 0 0 0.35rem 0; color: #e6edf3; font-size: 0.95rem; font-weight: 600; }
+  .cc-metric-card h4 { margin: 0 0 0.35rem 0; color: #e6edf3; font-size: 0.95rem; font-weight: 600; line-height: 1.35; }
   .cc-score { font-size: 1.35rem; font-weight: 800; color: #58a6ff; }
   .cc-prob-track {
     height: 10px; border-radius: 6px; background: #21262d; overflow: hidden; margin: 0.5rem 0;
@@ -48,11 +56,44 @@ def inject_css() -> None:
     padding: 0.85rem 1rem;
     margin-bottom: 0.65rem;
   }
-  div[data-testid="stMetricValue"] { font-weight: 700; }
+  .cc-banner {
+    background: linear-gradient(90deg, #1f2937 0%, #312e81 50%, #1e3a5f 100%);
+    border: 1px solid #4c1d95;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .cc-badge-buy {
+    display: inline-block; padding: 0.2rem 0.65rem; border-radius: 999px;
+    background: #238636; color: #fff; font-weight: 700; font-size: 0.85rem;
+  }
+  .cc-badge-sell {
+    display: inline-block; padding: 0.2rem 0.65rem; border-radius: 999px;
+    background: #da3633; color: #fff; font-weight: 700; font-size: 0.85rem;
+  }
+  .cc-badge-hold {
+    display: inline-block; padding: 0.2rem 0.65rem; border-radius: 999px;
+    background: #9e6a03; color: #fff; font-weight: 700; font-size: 0.85rem;
+  }
+  div[data-testid="stMetricValue"] { font-weight: 700; color: #58a6ff !important; }
+  .health-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .health-up { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
+  .health-down { background: #f85149; }
 </style>
 """,
         unsafe_allow_html=True,
     )
+
+
+@st.cache_data(ttl=20)
+def fetch_api_health() -> dict[str, Any] | None:
+    try:
+        r = requests.get(f"{API_BASE}/api/v1/health", timeout=6)
+        if r.ok:
+            return r.json()
+    except requests.RequestException:
+        pass
+    return None
 
 
 def load_state() -> dict[str, Any]:
@@ -69,7 +110,7 @@ def read_log_tail() -> str:
         path = LOGS_DIR / name
         if path.exists():
             try:
-                return path.read_text(encoding="utf-8")[-8000:]
+                return path.read_text(encoding="utf-8")[-12000:]
             except OSError:
                 continue
     return "No logs yet."
@@ -83,70 +124,76 @@ def _prob_fill_class(yes_pct: float) -> str:
     return "cc-fill-mid"
 
 
-def render_markets_tab() -> None:
+def _preview_script_request(market_index: int, vibe: str) -> dict[str, Any] | None:
+    try:
+        r = requests.post(
+            f"{API_BASE}/api/v1/preview-script",
+            json={"market_index": market_index, "vibe": vibe},
+            timeout=45,
+        )
+        if r.ok:
+            return r.json()
+        return {"ok": False, "error": r.text[:500], "status": r.status_code}
+    except requests.RequestException as e:
+        return None
+
+
+def render_sidebar_health() -> None:
+    st.markdown("**API health**")
+    h = fetch_api_health()
+    if h and h.get("services"):
+        for name, stt in h["services"].items():
+            cls = "health-up" if stt == "up" else "health-down"
+            label = name.replace("_", " ")
+            st.markdown(
+                f'<span class="health-dot {cls}"></span>{label}: **{stt}**',
+                unsafe_allow_html=True,
+            )
+        st.caption(f"Backend `{API_BASE}`")
+    else:
+        st.markdown('<span class="health-dot health-down"></span>API offline', unsafe_allow_html=True)
+        st.caption("Start: `uvicorn api:app --host 0.0.0.0 --port 8090`")
+
+
+def render_polymarket_tab() -> None:
     from prompts import generate_script
     from scorer import score_single, top_markets
     import sentiment
 
     markets = top_markets(10)
-    st.subheader("Trending prediction markets")
-
     vibe = st.selectbox(
-        "Video vibe (Quick Generate)",
+        "Default vibe for Preview Script",
         ["breaking_news", "explainer", "hot_take", "deep_analysis", "countdown"],
         index=0,
-        key="quick_vibe",
+        key="poly_vibe",
     )
 
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        if st.button("Quick Generate — top scored market", type="primary", use_container_width=True):
-            if not markets:
-                st.warning("No markets available.")
-            else:
-                top = markets[0]
-                q = str(top.get("question", ""))
-                y = float(top.get("yes_pct", 50))
-                n = float(top.get("no_pct", 50))
-                v = float(top.get("volume_24h", 0))
-                d = str(top.get("description", q))
-                bundle = generate_script(vibe, q, y, n, v, d)
-                st.session_state["quick_script_bundle"] = bundle
-                st.session_state["quick_script_market"] = top
-    with c2:
-        if st.session_state.get("quick_script_bundle") and st.button(
-            "Send script to MoneyPrinterTurbo", use_container_width=True
-        ):
-            bundle = st.session_state["quick_script_bundle"]
-            payload = {
-                "video_subject": bundle.get("video_subject", ""),
-                "video_script": bundle.get("video_script") or "",
-                "video_language": "en",
-                "aspect": "9:16",
-            }
-            ok = False
-            for ep in ("/api/v1/videos", "/api/v1/generate", "/videos"):
-                try:
-                    r = requests.post(f"{MPT_BASE}{ep}", json=payload, timeout=25)
-                    if r.status_code < 400:
-                        st.success(f"Queued via {ep}")
-                        st.json(r.json() if r.content else {})
-                        ok = True
-                        break
-                except requests.RequestException as e:
-                    st.caption(str(e))
-            if not ok:
-                st.error("Could not reach MoneyPrinterTurbo — check :8080.")
+    # Alert banner (top divergences)
+    divs = sentiment.get_top_divergences(3)
+    if divs:
+        top = divs[0]
+        idx = html.escape(str(top.get("divergence_index", top.get("score", "—"))))
+        summ = html.escape(str(top.get("summary", "")))[:220]
+        st.markdown(
+            f'<div class="cc-banner"><strong style="color:#c4b5fd;">Social divergence watch</strong> — '
+            f"Divergence <strong>{idx}</strong><br/><span style='opacity:0.92;font-size:0.9rem;'>{summ}</span></div>",
+            unsafe_allow_html=True,
+        )
 
-    if st.session_state.get("quick_script_bundle"):
-        b = st.session_state["quick_script_bundle"]
-        with st.expander("Generated video script (video_subject)", expanded=True):
-            st.text_area("Copy for MPT", value=b.get("video_subject", ""), height=220, key="script_copy")
+    st.subheader("Polymarket (live)")
+    if not markets:
+        st.warning("No markets available from Polymarket right now.")
+        return
+
+    preview = score_single(markets[0]["raw_polymarket"])
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Top market score", f"{preview['score']:.2f}")
+    m2.metric("Rows", len(markets))
+    m3.metric("Social Δ (top)", sentiment.social_divergence_for_market(markets[0].get("question", "")))
 
     st.divider()
     st.markdown("#### Grok-style divergence alerts")
-    st.caption("Loaded from `intel/divergence_alerts.json` (or demo seed).")
-    for alert in sentiment.get_top_divergences(5):
+    for alert in sentiment.get_top_divergences(4):
         idx = alert.get("divergence_index", alert.get("score", "—"))
         soc = alert.get("social_sentiment", "")
         summ = html.escape(str(alert.get("summary", "")))
@@ -156,37 +203,26 @@ def render_markets_tab() -> None:
         implied_bit = f" · market YES ~{implied}%" if implied != "" else ""
         st.markdown(
             f'<div class="cc-alert-card"><strong>Divergence {idx_s}</strong>'
-            f"{' · ' + soc_d if soc else ''}"
-            f"{implied_bit}<br/><span style='opacity:0.9'>{summ}</span></div>",
+            f"{' · ' + soc_d if soc else ''}{implied_bit}<br/><span style='opacity:0.9'>{summ}</span></div>",
             unsafe_allow_html=True,
         )
 
     st.divider()
-    if not markets:
-        st.warning("No markets available from Polymarket right now.")
-        return
-
-    preview = score_single(markets[0]["raw_polymarket"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Top market score", f"{preview['score']:.2f}")
-    m2.metric("Markets shown", len(markets))
-    m3.metric("Top social divergence (row #1)", sentiment.social_divergence_for_market(markets[0].get("question", "")))
-
-    for row in markets:
+    for i, row in enumerate(markets):
         q = str(row.get("question", "—"))
         yes = float(row.get("yes_pct", 50))
         vol = float(row.get("volume_24h", 0))
         score = float(row.get("score") or row.get("cash_cow_score") or 0)
-        div_label = sentiment.social_divergence_for_market(q)
+        div_label = html.escape(str(sentiment.social_divergence_for_market(q)))
         pct_w = max(0.0, min(100.0, yes))
         fill_cls = _prob_fill_class(yes)
-
         q_safe = html.escape(q)
+
         st.markdown(
             f'<div class="cc-metric-card">'
             f"<h4>{q_safe}</h4>"
             f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">'
-            f'<span class="cc-score">Cash Cow {score:.1f}</span>'
+            f'<span class="cc-score">Score {score:.1f}</span>'
             f"<span style='color:#8b949e'>YES <strong style='color:#e6edf3'>{yes:.1f}%</strong></span>"
             f"<span style='color:#79c0ff'><strong>Social Δ</strong> {div_label}</span>"
             f"</div>"
@@ -196,43 +232,131 @@ def render_markets_tab() -> None:
             unsafe_allow_html=True,
         )
 
+        b1, b2 = st.columns([1, 2])
+        with b1:
+            if st.button("Preview Script", key=f"prev_{i}", use_container_width=True):
+                api_res = _preview_script_request(i, vibe)
+                if api_res and api_res.get("ok"):
+                    st.session_state[f"preview_{i}"] = api_res.get("script", {})
+                else:
+                    top = markets[i]
+                    bundle = generate_script(
+                        vibe,
+                        str(top.get("question", "")),
+                        float(top.get("yes_pct", 50)),
+                        float(top.get("no_pct", 50)),
+                        float(top.get("volume_24h", 0)),
+                        str(top.get("description", top.get("question", ""))),
+                    )
+                    st.session_state[f"preview_{i}"] = bundle
+                    if api_res is not None and not api_res.get("ok"):
+                        st.caption("API fallback — local `generate_script`")
+        with b2:
+            pass
+
+        if st.session_state.get(f"preview_{i}"):
+            with st.expander(f"Script preview · market #{i + 1}", expanded=False):
+                st.text_area(
+                    "video_subject",
+                    value=st.session_state[f"preview_{i}"].get("video_subject", ""),
+                    height=160,
+                    key=f"ta_{i}",
+                )
+
 
 def render_signals_tab() -> None:
+    """TradingAgents signals with colored badges + confidence progress."""
     from trading_signal import get_signal
 
+    st.subheader("TradingAgents signals")
     state = load_state()
-    tickers = state.get("detected_tickers") or ["BTC-USD", "SPY", "NVDA"]
-    rows = [get_signal(str(ticker)) for ticker in tickers[:5]]
-    st.subheader("Trading signals")
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    tickers = state.get("detected_tickers") or ["SPY", "NVDA", "BTC"]
+    for t in tickers[:8]:
+        sig = get_signal(str(t))
+        raw = str(sig.get("signal", "HOLD")).upper()
+        if raw in ("BUY", "OVERWEIGHT"):
+            badge_html = '<span class="cc-badge-buy">BUY</span>'
+        elif raw in ("SELL", "UNDERWEIGHT"):
+            badge_html = '<span class="cc-badge-sell">SELL</span>'
+        else:
+            badge_html = '<span class="cc-badge-hold">HOLD</span>'
+        conf = float(sig.get("confidence", 0) or 0)
+        summ = html.escape(str(sig.get("summary", "")))[:280]
+        t_esc = html.escape(str(t))
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            st.markdown(
+                f"<div class='cc-metric-card'><strong style='font-size:1.1rem'>{t_esc}</strong> {badge_html}<br/>"
+                f"<span style='color:#8b949e;font-size:0.88rem'>{summ}</span></div>",
+                unsafe_allow_html=True,
+            )
+        with c2:
+            st.progress(min(1.0, max(0.0, conf)), text=f"{conf*100:.0f}% conf")
 
 
-def render_yields_tab() -> None:
-    from defi_pipeline import get_defi_summary
+def render_defi_tab() -> None:
+    from defi_pipeline import get_defi_summary, get_top_yield_pools
 
-    summary = get_defi_summary(limit=10)
-    st.subheader("DeFi yield opportunities")
+    st.subheader("DeFi yields (live)")
+    summary = get_defi_summary(limit=12)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Pools", str(summary.get("count", 0)))
+    c1.metric("Pools tracked", str(summary.get("count", 0)))
     c2.metric("Avg APY", f"{summary.get('avg_apy', 0.0):.2f}%")
-    c3.metric("Total TVL", f"${summary.get('total_tvl_usd', 0.0):,.0f}")
-    st.dataframe(summary.get("pools", []), use_container_width=True, hide_index=True)
+    c3.metric("Aggregate TVL (USD)", f"${summary.get('total_tvl_usd', 0.0):,.0f}")
+
+    pools = summary.get("pools") or get_top_yield_pools()
+    if not pools:
+        st.info("No yield rows returned.")
+        return
+    df = pd.DataFrame(pools)
+    if "apy" in df.columns:
+        apys = df["apy"].astype(float)
+        lo, hi = float(apys.min()), float(apys.max())
+
+        def _apy_style(v: Any) -> str:
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                return ""
+            if hi <= lo:
+                return "color: #8b949e"
+            t = (fv - lo) / (hi - lo)
+            g = int(120 + 135 * t)
+            return f"color: rgb(56,{g},108); font-weight: 700"
+
+        show_cols = [c for c in ("chain", "project", "symbol", "apy", "tvlUsd") if c in df.columns]
+        if show_cols:
+            sub = df[show_cols].copy()
+            try:
+                styler = sub.style.map(_apy_style, subset=["apy"] if "apy" in sub.columns else [])
+                st.dataframe(styler, use_container_width=True, hide_index=True)
+            except Exception:
+                st.dataframe(sub, use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def render_video_tab() -> None:
+def render_video_factory_tab() -> None:
     from bridge import run_bridge, submit_video
     from scorer import top_markets
 
-    st.subheader("Video generation")
-    markets = top_markets(5)
-    vibe_v = st.selectbox("Vibe for submit", ["breaking_news", "explainer", "hot_take"], key="vid_vibe")
-    if markets and st.button("Submit top market to MoneyPrinterTurbo"):
-        result = submit_video(markets[0], vibe=vibe_v)
-        st.json(result)
-
-    if st.button("Run bridge for 2 videos"):
-        st.session_state["bridge_results"] = run_bridge(max_videos=2)
-
+    st.subheader("Video factory")
+    markets = top_markets(6)
+    vibe_v = st.selectbox(
+        "Vibe",
+        ["breaking_news", "explainer", "hot_take", "deep_analysis", "countdown"],
+        key="vf_vibe",
+    )
+    if markets:
+        if st.button("Submit top market to MoneyPrinterTurbo", use_container_width=True):
+            st.json(submit_video(markets[0], vibe=vibe_v))
+    st.divider()
+    if st.button("Run bridge pipeline (2 videos)", type="primary", use_container_width=True):
+        with st.spinner("Running bridge…"):
+            st.session_state["bridge_results"] = run_bridge(max_videos=2)
+        st.success("Bridge run finished.")
     if "bridge_results" in st.session_state:
         st.dataframe(st.session_state["bridge_results"], use_container_width=True, hide_index=True)
 
@@ -241,43 +365,64 @@ def render_orchestrator_tab() -> None:
     from orchestrator import get_last_plan, run_once
 
     st.subheader("Orchestrator")
-    if st.button("Run one orchestrator cycle"):
-        st.session_state["orchestrator_result"] = run_once()
-
+    state = load_state()
+    st.markdown("**Pipeline state**")
+    st.json(
+        {
+            "pipeline_status": state.get("pipeline_status"),
+            "detected_tickers": state.get("detected_tickers", []),
+            "last_orchestrator_run": state.get("last_orchestrator_run"),
+            "signals_count": len(state.get("signals") or []),
+        }
+    )
+    if st.button("Run one orchestrator cycle", use_container_width=True):
+        with st.spinner("Orchestrator running…"):
+            st.session_state["orchestrator_result"] = run_once(max_videos=2)
     st.markdown("**Last plan**")
     st.json(get_last_plan())
     if "orchestrator_result" in st.session_state:
         st.markdown("**Latest run**")
         st.json(st.session_state["orchestrator_result"])
-
     st.markdown("**Pipeline log**")
     st.code(read_log_tail(), language="log")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Cash Cow Dashboard", page_icon="🐄", layout="wide")
+    st.set_page_config(page_title="Cash Cow", page_icon="🐄", layout="wide")
     inject_css()
+
+    with st.sidebar:
+        st.markdown("### 🐄 Cash Cow")
+        render_sidebar_health()
+        st.divider()
+        st.caption("Ports: API **8090** · Dashboard **8502** · MPT **8080**")
+
     st.title("Cash Cow")
-    st.caption("Autonomous market intelligence engine")
+    st.caption("Autonomous market intelligence — Polymarket · DeFi · Signals · Video · Orchestrator")
 
     state = load_state()
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Pipeline", str(state.get("pipeline_status", "unknown")).upper())
-    with c2:
-        st.metric("Detected tickers", len(state.get("detected_tickers", [])))
-    with c3:
-        st.metric("Signals", len(state.get("signals", [])))
+    c1.metric("Pipeline", str(state.get("pipeline_status", "unknown")).upper())
+    c2.metric("Tickers", len(state.get("detected_tickers", [])))
+    c3.metric("Signals", len(state.get("signals", [])))
 
-    tabs = st.tabs(["Markets", "Signals", "Yields", "Videos", "Orchestrator"])
+    tabs = st.tabs(
+        [
+            "Polymarket",
+            "TradingAgents signals",
+            "DeFi yields",
+            "Video factory",
+            "Orchestrator",
+        ]
+    )
     with tabs[0]:
-        render_markets_tab()
+        render_polymarket_tab()
     with tabs[1]:
         render_signals_tab()
     with tabs[2]:
-        render_yields_tab()
+        render_defi_tab()
     with tabs[3]:
-        render_video_tab()
+        render_video_factory_tab()
     with tabs[4]:
         render_orchestrator_tab()
 

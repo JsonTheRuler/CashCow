@@ -1,4 +1,4 @@
-"""Cash Cow unified REST API — port 8090 (flat root modules)."""
+"""Cash Cow unified REST API — port 8090. Run: uvicorn api:app --host 0.0.0.0 --port 8090"""
 
 from __future__ import annotations
 
@@ -14,13 +14,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import defi_pipeline
+import forecaster
 import market_analytics
+import orchestrator
 import prompts
 import scorer
 import sentiment
 import trading_signal
 
-app = FastAPI(title="Cash Cow API", version="0.3.0", description="Unified backend for dashboard + integrations")
+app = FastAPI(
+    title="Cash Cow API",
+    version="0.4.0",
+    description="13 REST endpoints for Polymarket, DeFi, signals, forecasts, divergences, video generation, and orchestration.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -80,7 +88,11 @@ def _probe_get(url: str, timeout: float = 4.0) -> bool:
 
 class GenerateBody(BaseModel):
     market_index: int = Field(0, ge=0, description="Index into ranked markets (0 = top)")
-    vibe: str = Field("breaking_news", description="Video vibe for generate_script")
+    vibe: str = Field("breaking_news", description="Video vibe for script generation")
+
+
+class RunCycleBody(BaseModel):
+    max_videos: int = Field(2, ge=1, le=10, description="Markets to send to MoneyPrinterTurbo per cycle")
 
 
 def _pick_market(body: GenerateBody) -> dict[str, Any]:
@@ -92,9 +104,9 @@ def _pick_market(body: GenerateBody) -> dict[str, Any]:
     return ranked[body.market_index]
 
 
-@app.get("/api/v1/health")
+# --- 1. Health ---
+@app.get("/api/v1/health", tags=["health"])
 def health() -> dict[str, Any]:
-    """Probe Polymarket Gamma, DeFi Llama yields, and MoneyPrinterTurbo."""
     poly_ok = _probe_get("https://gamma-api.polymarket.com/markets?limit=1&active=true", timeout=6.0)
     llama_ok = False
     for u in ("https://yields.llama.fi/pools", "https://api.llama.fi/pools"):
@@ -113,42 +125,54 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.get("/api/v1/markets")
+# --- 2. Markets ---
+@app.get("/api/v1/markets", tags=["markets"])
 def api_markets(n: int = Query(10, ge=1, le=40)) -> dict[str, Any]:
     markets = cached(f"markets_{n}", 25, lambda: scorer.top_markets(n))
     return {"count": len(markets), "markets": markets}
 
 
-@app.get("/api/v1/yields")
+# --- 3. Yields ---
+@app.get("/api/v1/yields", tags=["defi"])
 def api_yields() -> dict[str, Any]:
     pools = cached("yields_top", 30, defi_pipeline.get_top_yield_pools)
     return {"count": len(pools), "pools": pools}
 
 
-@app.get("/api/v1/signals/{ticker}")
+# --- 4. Signals ---
+@app.get("/api/v1/signals/{ticker}", tags=["signals"])
 def api_signal(ticker: str) -> dict[str, Any]:
     return trading_signal.get_signal(ticker)
 
 
-@app.get("/api/v1/analytics")
+# --- 5. Analytics ---
+@app.get("/api/v1/analytics", tags=["analytics"])
 def api_analytics() -> dict[str, Any]:
     return cached("analytics", 30, lambda: market_analytics.full_analytics(25))
 
 
-@app.get("/api/v1/divergences")
+# --- 6. Forecast ---
+@app.get("/api/v1/forecast/{token_id}", tags=["forecast"])
+def api_forecast(token_id: str) -> dict[str, Any]:
+    return forecaster.forecast_market(token_id)
+
+
+# --- 7. Divergences ---
+@app.get("/api/v1/divergences", tags=["sentiment"])
 def api_divergences(limit: int = Query(12, ge=1, le=50)) -> dict[str, Any]:
     rows = cached(f"divergences_{limit}", 20, lambda: sentiment.get_top_divergences(limit))
     return {"count": len(rows), "divergences": rows}
 
 
-@app.post("/api/v1/generate")
+# --- 8. Generate (MPT) ---
+@app.post("/api/v1/generate", tags=["video"])
 def api_generate(body: GenerateBody) -> dict[str, Any]:
     pick = _pick_market(body)
     title = pick.get("question") or "Polymarket"
     yes = float(pick.get("yes_pct") or 50.0)
     no = float(pick.get("no_pct") or 50.0)
     vol = float(pick.get("volume_24h") or 0.0)
-    desc = str(pick.get("description") or pick.get("source_data", {}).get("description") or title)
+    desc = str(pick.get("description") or (pick.get("source_data") or {}).get("description") or title)
 
     script_bundle = prompts.generate_script(body.vibe, title, yes, no, vol, desc)
     video_subject = script_bundle["video_subject"]
@@ -222,7 +246,8 @@ def api_generate(body: GenerateBody) -> dict[str, Any]:
     raise HTTPException(status_code=502, detail=last_error or "MoneyPrinterTurbo unreachable")
 
 
-@app.get("/api/v1/dashboard")
+# --- 9. Dashboard bundle (30s cache) ---
+@app.get("/api/v1/dashboard", tags=["dashboard"])
 def api_dashboard() -> dict[str, Any]:
     def _build() -> dict[str, Any]:
         markets = scorer.top_markets(12)
@@ -266,9 +291,55 @@ def api_dashboard() -> dict[str, Any]:
             "suggested_tickers": sorted(tickers)[:12],
             "video_tasks": tasks[:20],
             "pipeline_log_tail": _read_pipeline_log(),
+            "orchestrator_plan": orchestrator.get_last_plan(),
         }
 
     return cached("dashboard_bundle", 30, _build)
+
+
+# --- 10. Preview script (no MPT) ---
+@app.post("/api/v1/preview-script", tags=["video"])
+def api_preview_script(body: GenerateBody) -> dict[str, Any]:
+    pick = _pick_market(body)
+    title = pick.get("question") or "Polymarket"
+    yes = float(pick.get("yes_pct") or 50.0)
+    no = float(pick.get("no_pct") or 50.0)
+    vol = float(pick.get("volume_24h") or 0.0)
+    desc = str(pick.get("description") or (pick.get("source_data") or {}).get("description") or title)
+    script_bundle = prompts.generate_script(body.vibe, title, yes, no, vol, desc)
+    return {
+        "ok": True,
+        "market_index": body.market_index,
+        "market": {
+            "id": pick.get("id"),
+            "question": title,
+            "rank": pick.get("rank"),
+            "cash_cow_score": pick.get("cash_cow_score") or pick.get("score"),
+        },
+        "script": script_bundle,
+    }
+
+
+# --- 11. Run orchestrator cycle ---
+@app.post("/api/v1/run-cycle", tags=["orchestrator"])
+def api_run_cycle(body: RunCycleBody = RunCycleBody()) -> dict[str, Any]:
+    try:
+        result = orchestrator.run_once(max_videos=body.max_videos)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"ok": True, "result": result}
+
+
+# --- 12. Persisted pipeline state ---
+@app.get("/api/v1/state", tags=["state"])
+def api_state() -> dict[str, Any]:
+    return _load_state()
+
+
+# --- 13. Orchestrator plan artifact ---
+@app.get("/api/v1/orchestrator/plan", tags=["orchestrator"])
+def api_orchestrator_plan() -> dict[str, Any]:
+    return orchestrator.get_last_plan()
 
 
 def main() -> None:
