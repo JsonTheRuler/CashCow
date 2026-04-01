@@ -4,6 +4,50 @@ This repo ships **[TauricResearch/TradingAgents](https://github.com/TauricResear
 
 **Hackathon dashboard (Streamlit):** `pip install ".[dashboard]"` then `streamlit run dashboard.py --server.port 8502` — Polymarket trending markets, DeFi Llama stable yields, TradingAgents signals from `state.json`, MoneyPrinterTurbo hooks on `:8080`, and `bridge.py` for the pipeline sidebar button.
 
+## Demo (Cash Cow)
+
+> **Screenshot (placeholder):** add `assets/cashcow-dashboard-placeholder.png` (full-width Streamlit capture) for slides and README.
+
+**Cash Cow** is a hackathon demo that scores Polymarket prediction markets for “content + alpha” potential, layers DeFi stablecoin yields and lightweight trading signals, and can hand off topics to **MoneyPrinterTurbo** for short-form video generation—exposed through a unified **FastAPI** backend so the Streamlit UI stays presentation-only.
+
+**Quick start**
+
+```bash
+pip install ".[dashboard]"
+# Terminal A — unified API (caching + all /api/v1/* routes)
+python api.py
+# Terminal B — Streamlit (reads http://127.0.0.1:8090/api/v1/dashboard)
+streamlit run dashboard.py --server.port 8502
+# Optional CLI
+python cli.py demo
+python cli.py scan
+```
+
+Open **http://127.0.0.1:8090/docs** to exercise endpoints. Optional: `python cli.py demo --serve` spawns API + dashboard as background processes (Windows).
+
+**Architecture (ASCII)**
+
+```
+  Polymarket Gamma                    DeFi Llama
+         |                                  |
+         v                                  v
+    +-----------+                    +------------+
+    |  scorer   |                    | defi_pipe  |
+    +-----------+                    +------------+
+         \                                /
+          \                              /
+           v        +-----------+       v
+            ------->|  api.py   |<-------
+   state.json ----->|  :8090    |     MoneyPrinterTurbo :8080
+                    +-----------+
+                           |
+                           v
+                    +-------------+
+                    | dashboard   |
+                    | Streamlit   |
+                    +-------------+
+```
+
 ---
 
 <p align="center">

@@ -54,6 +54,40 @@ class RankedOpportunity:
     source_data: dict[str, Any]
 
 
+@dataclass(slots=True)
+class ScoredMarket:
+    """Compatibility wrapper for ranked prediction markets used by orchestrators."""
+
+    id: str
+    question: str
+    yes_pct: float
+    no_pct: float
+    volume_24h: float
+    score: float
+    rank: int = 0
+    description: str = ""
+    score_breakdown: dict[str, float] = field(default_factory=dict)
+    source_data: dict[str, Any] = field(default_factory=dict)
+    raw_polymarket: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a dashboard- and CLI-friendly serialized representation."""
+        return {
+            "rank": self.rank,
+            "id": self.id,
+            "question": self.question,
+            "yes_pct": self.yes_pct,
+            "no_pct": self.no_pct,
+            "volume_24h": self.volume_24h,
+            "description": self.description,
+            "score": self.score,
+            "cash_cow_score": self.score,
+            "score_breakdown": self.score_breakdown,
+            "source_data": self.source_data,
+            "raw_polymarket": self.raw_polymarket,
+        }
+
+
 def parse_datetime(value: str | datetime | None) -> datetime | None:
     """Parse a flexible datetime value into an aware UTC datetime."""
     if value is None:
@@ -273,6 +307,77 @@ def rank_opportunities(
             )
         )
     return ranked
+
+
+def score_single(item: dict[str, Any]) -> dict[str, Any]:
+    """Score a single Polymarket-style market dictionary."""
+    pm = _prediction_from_dict(item)
+    raw_score, breakdown = score_prediction_market(pm)
+    scored = ScoredMarket(
+        id=pm.id,
+        question=pm.question,
+        yes_pct=pm.yes_pct,
+        no_pct=pm.no_pct,
+        volume_24h=pm.volume_24h,
+        description=pm.description,
+        score=round(raw_score * 100.0, 2),
+        score_breakdown={k: round(v * 100.0, 2) for k, v in breakdown.items()},
+        source_data=asdict(pm),
+        raw_polymarket=item.get("raw") if isinstance(item.get("raw"), dict) else item,
+    )
+    return scored.to_dict()
+
+
+def fetch_and_score(limit: int = 10) -> list[ScoredMarket]:
+    """Fetch Polymarket markets and return ranked ``ScoredMarket`` objects."""
+    try:
+        from data_sources import fetch_gamma_markets
+    except ImportError:
+        return []
+
+    try:
+        raw_rows = fetch_gamma_markets(limit=max(25, limit * 3))
+    except Exception:
+        return []
+
+    rows: list[tuple[PredictionMarketOpportunity, float, dict[str, float], dict[str, Any]]] = []
+    for item in raw_rows:
+        pm = _prediction_from_dict(item)
+        raw_score, breakdown = score_prediction_market(pm)
+        gamma_raw = item.get("raw") if isinstance(item.get("raw"), dict) else item
+        rows.append((pm, raw_score, breakdown, gamma_raw if isinstance(gamma_raw, dict) else {}))
+
+    rows.sort(key=lambda r: r[1], reverse=True)
+    normalized = _normalize_to_100([r[1] for r in rows])
+
+    result: list[ScoredMarket] = []
+    for i, (((pm, raw_score, breakdown, gamma_raw), cc_score)) in enumerate(
+        zip(rows, normalized, strict=False),
+        start=1,
+    ):
+        if i > limit:
+            break
+        result.append(
+            ScoredMarket(
+                rank=i,
+                id=pm.id,
+                question=pm.question,
+                yes_pct=pm.yes_pct,
+                no_pct=pm.no_pct,
+                volume_24h=pm.volume_24h,
+                description=pm.description,
+                score=cc_score,
+                score_breakdown={k: round(v * 100.0, 2) for k, v in breakdown.items()},
+                source_data=asdict(pm),
+                raw_polymarket=gamma_raw,
+            )
+        )
+    return result
+
+
+def top_markets(n: int = 10) -> list[dict[str, Any]]:
+    """Return serialized top-ranked markets for dashboards, CLIs, and APIs."""
+    return [market.to_dict() for market in fetch_and_score(limit=n)]
 
 
 if __name__ == "__main__":
