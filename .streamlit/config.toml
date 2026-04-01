@@ -1,0 +1,10 @@
+# Cash Cow — dark shell + gold primary + readable body text (Streamlit >= 1.16)
+[theme]
+primaryColor = "#f59e0b"
+backgroundColor = "#0a0e14"
+secondaryBackgroundColor = "#161b22"
+textColor = "#e6edf3"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
