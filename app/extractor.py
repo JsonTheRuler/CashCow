@@ -148,6 +148,8 @@ MACRO_MAP: dict[str, list[str]] = {
     "interest rate": ["SPY", "TLT", "GLD"],
     "rate hike": ["SPY", "TLT", "GLD"],
     "rate cut": ["SPY", "TLT", "GLD"],
+    "cut rates": ["SPY", "TLT", "GLD"],
+    "raise rates": ["SPY", "TLT", "GLD"],
     "fomc": ["SPY", "TLT", "GLD"],
     "inflation": ["TIP", "GLD"],
     "cpi": ["TIP", "GLD", "SPY"],
