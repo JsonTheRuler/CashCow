@@ -10,6 +10,8 @@ This repo ships **[TauricResearch/TradingAgents](https://github.com/TauricResear
 
 **Cash Cow** is a hackathon demo that scores Polymarket prediction markets for “content + alpha” potential, layers DeFi stablecoin yields and lightweight trading signals, and can hand off topics to **MoneyPrinterTurbo** for short-form video generation—exposed through a unified **FastAPI** backend so the Streamlit UI stays presentation-only.
 
+**Strategy memo (intel):** [AI trading bots, prediction markets, and profiting from model mistakes](intel/ai-trading-bots-prediction-markets-model-mistakes.md) — bot taxonomy, LLM failure modes, counter-strategies, and a “model mistake harvester” architecture outline (research notes; not financial advice).
+
 **Quick start**
 
 ```bash
